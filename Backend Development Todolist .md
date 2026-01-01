@@ -3,7 +3,7 @@
 ## 1. Project Configuration & Structure
 遵循 FastAPI 的 CoC (约定优于配置) 目录结构。
 
-- [ ] **初始化目录结构**
+- [x] **初始化目录结构** ✅
   ```text
   backend/
   ├── app/
@@ -21,7 +21,7 @@
   └── .env                    # 环境变量
   ```
 
-- [ ] **环境配置** (app/core/config.py)
+- [x] **环境配置** (app/core/config.py) ✅
   - 使用 pydantic-settings 读取 .env
   - 配置 SQLITE_URL: `sqlite+aiosqlite:///./app.db` (使用异步驱动)
   - 配置 SECRET_KEY, ALGORITHM (HS256), ACCESS_TOKEN_EXPIRE_MINUTES
