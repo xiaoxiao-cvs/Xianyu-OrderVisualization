@@ -4,6 +4,8 @@ export { Label } from './label'
 export { Card, CardHeader, CardFooter, CardTitle, CardDescription, CardContent } from './card'
 export { Badge } from './badge'
 export { Progress } from './progress'
+export { Switch } from './switch'
+export { Tabs, TabsList, TabsTrigger, TabsContent } from './tabs'
 export {
   Dialog,
   DialogTrigger,

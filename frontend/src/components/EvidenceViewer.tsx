@@ -1,9 +1,10 @@
 import * as React from 'react'
 import { format } from 'date-fns'
 import { zhCN } from 'date-fns/locale'
-import { X, Download, Clock, Globe, Monitor } from 'lucide-react'
+import { motion, AnimatePresence } from 'framer-motion'
+import { X, Download, Clock, Globe, Monitor, Loader2 } from 'lucide-react'
 import html2canvas from 'html2canvas'
-import { Button, useToast } from '@/components/ui'
+import { useToast } from '@/components/ui'
 import { cn } from '@/lib/utils'
 import type { Order, OrderLog } from '@/lib/api'
 
@@ -36,109 +37,146 @@ export default function EvidenceViewer({ open, onOpenChange, order, logs }: Evid
       link.click()
       
       addToast({ title: '证据已保存', variant: 'success' })
-    } catch (error) {
+    } catch {
       addToast({ title: '保存失败', variant: 'error' })
     } finally {
       setSaving(false)
     }
   }
 
-  if (!open) return null
-
   return (
-    <div className="fixed inset-0 z-50 flex">
-      {/* Overlay */}
-      <div
-        className="fixed inset-0 bg-black/50"
-        onClick={() => onOpenChange(false)}
-      />
+    <AnimatePresence>
+      {open && (
+        <div className="fixed inset-0 z-50 flex">
+          {/* Overlay */}
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 bg-black/50 backdrop-blur-sm"
+            onClick={() => onOpenChange(false)}
+          />
 
-      {/* Side Panel */}
-      <div className="relative ml-auto h-full w-full max-w-lg bg-background shadow-xl animate-in slide-in-from-right duration-300">
-        {/* Header */}
-        <div className="flex items-center justify-between border-b p-4">
-          <h2 className="text-lg font-semibold">访问日志 - 订单 #{order.id}</h2>
-          <div className="flex gap-2">
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={handleSaveEvidence}
-              loading={saving}
-            >
-              <Download className="mr-2 h-4 w-4" />
-              保存证据
-            </Button>
-            <button
-              onClick={() => onOpenChange(false)}
-              className="rounded-md p-2 hover:bg-muted"
-            >
-              <X className="h-4 w-4" />
-            </button>
-          </div>
-        </div>
-
-        {/* Content */}
-        <div className="h-[calc(100%-64px)] overflow-auto p-4">
-          <div ref={contentRef} className="bg-white p-4 rounded-lg">
-            {/* 订单信息头 */}
-            <div className="mb-6 pb-4 border-b">
-              <h3 className="font-bold text-lg mb-2">📦 订单访问证据</h3>
-              <p className="text-sm text-muted-foreground">
-                订单 #{order.id} · {order.customerNote}
-              </p>
-              <p className="text-sm text-muted-foreground">
-                生成时间: {format(new Date(), 'yyyy年MM月dd日 HH:mm:ss', { locale: zhCN })}
-              </p>
-            </div>
-
-            {/* 时间轴 */}
-            {logs.length === 0 ? (
-              <p className="text-center text-muted-foreground py-8">暂无访问记录</p>
-            ) : (
-              <div className="space-y-4">
-                {logs.map((log, index) => (
-                  <div
-                    key={log.id}
-                    className={cn(
-                      'relative pl-6 pb-4',
-                      index !== logs.length - 1 && 'border-l-2 border-muted'
-                    )}
-                  >
-                    {/* 时间轴点 */}
-                    <div className="absolute left-0 top-0 -translate-x-1/2 w-3 h-3 rounded-full bg-primary border-2 border-white" />
-                    
-                    {/* 日志内容 */}
-                    <div className="bg-muted/50 rounded-lg p-3">
-                      <div className="flex items-center gap-2 mb-2">
-                        <Clock className="h-4 w-4 text-muted-foreground" />
-                        <span className="text-sm font-medium">
-                          {format(new Date(log.createdAt), 'yyyy-MM-dd HH:mm:ss', { locale: zhCN })}
-                        </span>
-                      </div>
-                      <p className="font-medium mb-2">{log.action}</p>
-                      <div className="space-y-1 text-sm text-muted-foreground">
-                        <div className="flex items-center gap-2">
-                          <Globe className="h-3 w-3" />
-                          <span>IP: {log.ip}</span>
-                        </div>
-                        <div className="flex items-start gap-2">
-                          <Monitor className="h-3 w-3 mt-0.5" />
-                          <span className="break-all">{log.userAgent}</span>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                ))}
-              </div>
+          {/* Side Panel */}
+          <motion.div
+            initial={{ x: '100%' }}
+            animate={{ x: 0 }}
+            exit={{ x: '100%' }}
+            transition={{ type: 'spring', damping: 30, stiffness: 300 }}
+            className={cn(
+              'relative ml-auto h-full w-full max-w-lg',
+              'bg-card/95 backdrop-blur-xl border-l border-border/50 shadow-2xl'
             )}
-
-            {/* 页脚 */}
-            <div className="mt-6 pt-4 border-t text-center text-xs text-muted-foreground">
-              此证据由订单管理系统自动生成，用于记录客户访问与下载行为
+          >
+            {/* Header */}
+            <div className="flex items-center justify-between p-4 border-b border-border/50">
+              <div>
+                <h2 className="text-lg font-bold text-foreground">访问日志</h2>
+                <p className="text-sm text-muted-foreground">订单 #{order.id}</p>
+              </div>
+              <div className="flex gap-2">
+                <button
+                  onClick={handleSaveEvidence}
+                  disabled={saving}
+                  className={cn(
+                    'flex items-center gap-2 px-3 py-2 rounded-xl text-sm font-medium',
+                    'bg-primary/10 text-primary',
+                    'hover:bg-primary hover:text-primary-foreground transition-all duration-200',
+                    'disabled:opacity-50 disabled:cursor-not-allowed'
+                  )}
+                >
+                  {saving ? (
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                  ) : (
+                    <Download className="w-4 h-4" />
+                  )}
+                  保存证据
+                </button>
+                <button
+                  onClick={() => onOpenChange(false)}
+                  className="p-2 rounded-xl hover:bg-muted/50 transition-all duration-200"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
             </div>
-          </div>
+
+            {/* Content */}
+            <div className="h-[calc(100%-80px)] overflow-auto p-4">
+              <div ref={contentRef} className="bg-white dark:bg-card p-6 rounded-2xl">
+                {/* 订单信息头 */}
+                <div className="mb-6 pb-4 border-b border-border/50">
+                  <h3 className="font-bold text-lg text-foreground mb-2">📦 订单访问证据</h3>
+                  <p className="text-sm text-muted-foreground">
+                    订单 #{order.id} · {order.client_name}
+                  </p>
+                  <p className="text-sm text-muted-foreground">
+                    生成时间: {format(new Date(), 'yyyy年MM月dd日 HH:mm:ss', { locale: zhCN })}
+                  </p>
+                </div>
+
+                {/* 时间轴 */}
+                {logs.length === 0 ? (
+                  <div className="flex flex-col items-center justify-center py-12 text-center">
+                    <div className="w-14 h-14 rounded-2xl bg-muted/50 flex items-center justify-center mb-4">
+                      <Clock className="w-7 h-7 text-muted-foreground" />
+                    </div>
+                    <p className="font-medium text-foreground mb-1">暂无访问记录</p>
+                    <p className="text-sm text-muted-foreground">客户访问后将自动记录</p>
+                  </div>
+                ) : (
+                  <div className="space-y-4">
+                    {logs.map((log, index) => (
+                      <motion.div
+                        key={log.id}
+                        initial={{ opacity: 0, x: 20 }}
+                        animate={{ opacity: 1, x: 0 }}
+                        transition={{ delay: index * 0.05 }}
+                        className={cn(
+                          'relative pl-6 pb-4',
+                          index !== logs.length - 1 && 'border-l-2 border-border/50'
+                        )}
+                      >
+                        {/* 时间轴点 */}
+                        <div className="absolute left-0 top-0 -translate-x-1/2 w-3 h-3 rounded-full bg-primary border-2 border-background" />
+                        
+                        {/* 日志内容 */}
+                        <div className={cn(
+                          'p-4 rounded-2xl',
+                          'bg-muted/30 border border-border/50'
+                        )}>
+                          <div className="flex items-center gap-2 mb-2">
+                            <Clock className="w-4 h-4 text-muted-foreground" />
+                            <span className="text-sm font-medium text-foreground">
+                              {format(new Date(log.createdAt), 'yyyy-MM-dd HH:mm:ss', { locale: zhCN })}
+                            </span>
+                          </div>
+                          <p className="font-medium text-foreground mb-3">{log.action}</p>
+                          <div className="space-y-2 text-sm">
+                            <div className="flex items-center gap-2 text-muted-foreground">
+                              <Globe className="w-3.5 h-3.5" />
+                              <span>IP: {log.ip}</span>
+                            </div>
+                            <div className="flex items-start gap-2 text-muted-foreground">
+                              <Monitor className="w-3.5 h-3.5 mt-0.5 shrink-0" />
+                              <span className="break-all text-xs">{log.userAgent}</span>
+                            </div>
+                          </div>
+                        </div>
+                      </motion.div>
+                    ))}
+                  </div>
+                )}
+
+                {/* 页脚 */}
+                <div className="mt-6 pt-4 border-t border-border/50 text-center text-xs text-muted-foreground">
+                  此证据由订单管理系统自动生成，用于记录客户访问与下载行为
+                </div>
+              </div>
+            </div>
+          </motion.div>
         </div>
-      </div>
-    </div>
+      )}
+    </AnimatePresence>
   )
 }
