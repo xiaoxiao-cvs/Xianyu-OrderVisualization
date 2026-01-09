@@ -6,8 +6,8 @@ api_router = APIRouter()
 # Auth routes
 api_router.include_router(auth.router, prefix="/auth", tags=["Authentication"])
 
-# Admin routes
-api_router.include_router(orders.router, prefix="/admin/orders", tags=["Admin - Orders"])
+# Admin routes - orders API
+api_router.include_router(orders.router, prefix="/orders", tags=["Admin - Orders"])
 
 # Client routes
 api_router.include_router(client.router, prefix="/client", tags=["Client"])

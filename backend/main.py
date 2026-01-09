@@ -7,15 +7,15 @@ import uvicorn
 from app.main import app
 
 if __name__ == "__main__":
-    print("🚀 Starting Xianyu Order API...")
-    print("📝 API Docs: http://localhost:8000/docs")
-    print("❤️  Health Check: http://localhost:8000/health")
+    print("Starting Xianyu Order API...")
+    print("API Docs: http://localhost:8001/docs")
+    print("Health Check: http://localhost:8001/health")
     print()
     
     uvicorn.run(
         "app.main:app",
         host="0.0.0.0",
-        port=8000,
+        port=8001,
         reload=True,
         log_level="info"
     )

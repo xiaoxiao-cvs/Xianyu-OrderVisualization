@@ -6,7 +6,6 @@ import secrets
 import string
 from app.db.session import get_db
 from app.core.deps import get_current_admin
-from app.models.admin import Admin
 from app.models.order import Order, OrderStatus
 from app.models.log import AccessLog
 from app.schemas.order import OrderCreate, OrderResponse, OrderListResponse
@@ -27,7 +26,7 @@ async def list_orders(
     limit: int = Query(50, ge=1, le=100),
     status_filter: Optional[OrderStatus] = None,
     db: AsyncSession = Depends(get_db),
-    current_admin: Admin = Depends(get_current_admin)
+    _: bool = Depends(get_current_admin)
 ):
     """
     List all orders with pagination and optional status filter
@@ -57,7 +56,7 @@ async def list_orders(
 async def create_order(
     order_in: OrderCreate,
     db: AsyncSession = Depends(get_db),
-    current_admin: Admin = Depends(get_current_admin)
+    _: bool = Depends(get_current_admin)
 ):
     """
     Create a new order with auto-generated access key
@@ -89,7 +88,7 @@ async def create_order(
 async def get_order(
     order_id: int,
     db: AsyncSession = Depends(get_db),
-    current_admin: Admin = Depends(get_current_admin)
+    _: bool = Depends(get_current_admin)
 ):
     """
     Get order details by ID
@@ -112,7 +111,7 @@ async def get_order_logs(
     skip: int = Query(0, ge=0),
     limit: int = Query(100, ge=1, le=500),
     db: AsyncSession = Depends(get_db),
-    current_admin: Admin = Depends(get_current_admin)
+    _: bool = Depends(get_current_admin)
 ):
     """
     Get all access logs for a specific order
@@ -148,7 +147,7 @@ async def get_order_logs(
 async def delete_order(
     order_id: int,
     db: AsyncSession = Depends(get_db),
-    current_admin: Admin = Depends(get_current_admin)
+    _: bool = Depends(get_current_admin)
 ):
     """
     Delete an order and all associated files and logs

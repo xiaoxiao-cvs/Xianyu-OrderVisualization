@@ -5,7 +5,6 @@ from sqlalchemy import select
 from datetime import datetime
 from app.db.session import get_db
 from app.core.security import decode_access_token
-from app.models.admin import Admin
 from app.models.order import Order
 
 security = HTTPBearer()
@@ -13,32 +12,22 @@ security = HTTPBearer()
 
 async def get_current_admin(
     credentials: HTTPAuthorizationCredentials = Depends(security),
-    db: AsyncSession = Depends(get_db)
-) -> Admin:
+) -> bool:
     """
-    Verify JWT token and return current admin user
+    Verify JWT token for admin authentication
+    Returns True if token is valid (admin authenticated)
     """
     token = credentials.credentials
-    username = decode_access_token(token)
+    subject = decode_access_token(token)
     
-    if username is None:
+    if subject is None or subject != "admin":
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Could not validate credentials",
             headers={"WWW-Authenticate": "Bearer"},
         )
     
-    result = await db.execute(select(Admin).where(Admin.username == username))
-    admin = result.scalar_one_or_none()
-    
-    if admin is None:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Admin not found",
-            headers={"WWW-Authenticate": "Bearer"},
-        )
-    
-    return admin
+    return True
 
 
 async def get_order_by_hash(

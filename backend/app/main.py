@@ -11,15 +11,17 @@ from app.api.v1.api import api_router
 async def lifespan(app: FastAPI):
     """
     Lifespan events for the application
-    - Startup: Initialize database and ensure upload directory exists
+    - Startup: Initialize database and ensure data directories exist
     - Shutdown: Cleanup tasks
     """
     # Startup
     print("🚀 Starting up application...")
     
-    # Ensure upload directory exists
-    settings.ensure_upload_dir()
-    print(f"✅ Upload directory ready: {settings.UPLOAD_DIR}")
+    # Ensure data directories exist
+    settings.ensure_data_dirs()
+    print(f"✅ Data directories ready")
+    print(f"   Database: {settings.DATABASE_URL}")
+    print(f"   Order Files: {settings.ORDER_FILE_DIR}")
     
     # Initialize database tables
     await init_db()
@@ -36,7 +38,8 @@ app = FastAPI(
     title="Xianyu Order Visualization API",
     description="Backend API for order management and file delivery tracking",
     version="1.0.0",
-    lifespan=lifespan
+    lifespan=lifespan,
+    redirect_slashes=False  # 禁用尾部斜杠重定向，避免 Authorization header 丢失
 )
 
 # Configure CORS

@@ -9,28 +9,12 @@ from typing import Optional
 from app.db.session import get_db
 from app.core.config import settings
 from app.core.deps import get_current_admin, get_order_by_hash, get_client_ip, get_user_agent
-from app.models.admin import Admin
 from app.models.order import Order
 from app.models.file import File, FileType
 from app.models.log import AccessLog
 from app.schemas.file import FileResponse
 
 router = APIRouter()
-
-# Allowed file extensions
-ALLOWED_EXTENSIONS = {
-    '.pdf', '.doc', '.docx', '.txt', '.md',
-    '.zip', '.rar', '.7z',
-    '.jpg', '.jpeg', '.png', '.gif',
-    '.py', '.js', '.html', '.css', '.json',
-    '.mp4', '.avi', '.mov'
-}
-
-
-def is_allowed_file(filename: str) -> bool:
-    """Check if file extension is allowed"""
-    ext = Path(filename).suffix.lower()
-    return ext in ALLOWED_EXTENSIONS
 
 
 async def log_download(
@@ -58,12 +42,12 @@ async def upload_file(
     file_type: FileType,
     file: UploadFile = FastAPIFile(...),
     db: AsyncSession = Depends(get_db),
-    current_admin: Admin = Depends(get_current_admin)
+    _: bool = Depends(get_current_admin)
 ):
     """
-    Upload a file for an order
-    - Validates file extension
+    Upload a file for an order (Admin only)
     - Renames to UUID for security
+    - Stores in order-specific directory
     - Stores metadata in database
     """
     # Get order by access_key
@@ -76,19 +60,13 @@ async def upload_file(
             detail="Order not found"
         )
     
-    # Validate file extension
-    if not is_allowed_file(file.filename):
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"File type not allowed. Allowed extensions: {', '.join(ALLOWED_EXTENSIONS)}"
-        )
-    
     # Generate UUID filename with original extension
     original_ext = Path(file.filename).suffix
     uuid_filename = f"{uuid.uuid4()}{original_ext}"
     
-    # Save file to disk
-    file_path = Path(settings.UPLOAD_DIR) / uuid_filename
+    # Get order-specific directory
+    order_dir = settings.get_order_file_path(access_key)
+    file_path = order_dir / uuid_filename
     
     try:
         content = await file.read()
@@ -102,7 +80,7 @@ async def upload_file(
             detail=f"Failed to save file: {str(e)}"
         )
     
-    # Create file record in database
+    # Create file record in database with relative path
     db_file = File(
         order_id=order.id,
         filename_original=file.filename,
@@ -142,13 +120,20 @@ async def download_file(
             detail="File not found"
         )
     
+    # Get order to find access_key for file path
+    order_result = await db.execute(select(Order).where(Order.id == db_file.order_id))
+    order = order_result.scalar_one_or_none()
+    
+    if not order:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Order not found"
+        )
+    
     # Verify access
     if access_key:
         # Client access - verify access_key matches file's order
-        order_result = await db.execute(select(Order).where(Order.id == db_file.order_id))
-        order = order_result.scalar_one_or_none()
-        
-        if not order or order.access_key != access_key:
+        if order.access_key != access_key:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="Access denied"
@@ -166,8 +151,9 @@ async def download_file(
             filename=db_file.filename_original
         )
     
-    # Check if file exists on disk
-    file_path = Path(settings.UPLOAD_DIR) / db_file.filename_saved
+    # Check if file exists on disk (in order-specific directory)
+    order_dir = settings.get_order_file_path(order.access_key)
+    file_path = order_dir / db_file.filename_saved
     
     if not file_path.exists():
         raise HTTPException(
@@ -193,7 +179,7 @@ async def download_file(
 async def delete_file(
     file_id: int,
     db: AsyncSession = Depends(get_db),
-    current_admin: Admin = Depends(get_current_admin)
+    _: bool = Depends(get_current_admin)
 ):
     """
     Delete a file (admin only)
@@ -207,10 +193,16 @@ async def delete_file(
             detail="File not found"
         )
     
-    # Delete file from disk
-    file_path = Path(settings.UPLOAD_DIR) / db_file.filename_saved
-    if file_path.exists():
-        os.remove(file_path)
+    # Get order to find file path
+    order_result = await db.execute(select(Order).where(Order.id == db_file.order_id))
+    order = order_result.scalar_one_or_none()
+    
+    if order:
+        # Delete file from disk (in order-specific directory)
+        order_dir = settings.get_order_file_path(order.access_key)
+        file_path = order_dir / db_file.filename_saved
+        if file_path.exists():
+            os.remove(file_path)
     
     # Delete from database
     await db.delete(db_file)

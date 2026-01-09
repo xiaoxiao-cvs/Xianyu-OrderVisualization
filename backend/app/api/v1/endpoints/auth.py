@@ -1,42 +1,35 @@
-from fastapi import APIRouter, Depends, HTTPException, status
-from fastapi.security import OAuth2PasswordRequestForm
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
+from fastapi import APIRouter, HTTPException, status
 from datetime import timedelta
-from app.db.session import get_db
-from app.core.security import verify_password, create_access_token
+from passlib.context import CryptContext
+from app.core.security import create_access_token
 from app.core.config import settings
-from app.models.admin import Admin
-from app.schemas.admin import Token
+from app.schemas.admin import Token, LoginRequest
 
 router = APIRouter()
 
+# 密码验证上下文
+pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+
 
 @router.post("/login", response_model=Token)
-async def login(
-    form_data: OAuth2PasswordRequestForm = Depends(),
-    db: AsyncSession = Depends(get_db)
-):
+async def login(login_data: LoginRequest):
     """
     Admin login endpoint
-    Returns JWT token for authentication
+    Validates password against stored hash and returns JWT token
+    Supports multiple concurrent sessions
     """
-    # Query admin by username
-    result = await db.execute(select(Admin).where(Admin.username == form_data.username))
-    admin = result.scalar_one_or_none()
-    
-    # Verify credentials
-    if not admin or not verify_password(form_data.password, admin.hashed_password):
+    # Verify password against stored hash
+    if not pwd_context.verify(login_data.password, settings.ADMIN_KEY_HASH):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Incorrect username or password",
+            detail="Invalid admin key",
             headers={"WWW-Authenticate": "Bearer"},
         )
     
-    # Create access token
+    # Create access token with "admin" as subject
     access_token_expires = timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
     access_token = create_access_token(
-        data={"sub": admin.username}, expires_delta=access_token_expires
+        data={"sub": "admin"}, expires_delta=access_token_expires
     )
     
     return {"access_token": access_token, "token_type": "bearer"}
