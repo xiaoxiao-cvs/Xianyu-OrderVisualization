@@ -102,6 +102,29 @@ _config = load_config()
 
 
 @dataclass
+class OSSSettings:
+    """OSS 配置类"""
+    enabled: bool = _config.get("oss", {}).get("enabled", False)
+    access_key_id: str = _config.get("oss", {}).get("access_key_id", "")
+    access_key_secret: str = _config.get("oss", {}).get("access_key_secret", "")
+    endpoint: str = _config.get("oss", {}).get("endpoint", "oss-cn-hangzhou.aliyuncs.com")
+    bucket_name: str = _config.get("oss", {}).get("bucket_name", "")
+    callback_url: str = _config.get("oss", {}).get("callback_url", "")
+    expire_seconds: int = _config.get("oss", {}).get("expire_seconds", 300)
+    upload_prefix: str = _config.get("oss", {}).get("upload_prefix", "temp_uploads")
+    
+    @property
+    def host(self) -> str:
+        """获取 OSS Bucket 完整地址"""
+        return f"https://{self.bucket_name}.{self.endpoint}"
+    
+    @property
+    def is_configured(self) -> bool:
+        """检查 OSS 是否已正确配置"""
+        return bool(self.enabled and self.access_key_id and self.access_key_secret and self.bucket_name)
+
+
+@dataclass
 class Settings:
     """应用配置类"""
     
@@ -146,3 +169,4 @@ class Settings:
 
 # 全局配置实例
 settings = Settings()
+oss_settings = OSSSettings()

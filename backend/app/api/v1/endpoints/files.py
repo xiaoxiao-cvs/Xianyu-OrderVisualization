@@ -1,5 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File as FastAPIFile, BackgroundTasks, Request, Query
-from fastapi.responses import StreamingResponse
+from fastapi.responses import StreamingResponse, RedirectResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 import uuid
@@ -13,6 +13,7 @@ from app.models.order import Order
 from app.models.file import File, FileType
 from app.models.log import AccessLog
 from app.schemas.file import FileResponse
+from app.utils.oss import oss_client
 
 router = APIRouter()
 
@@ -105,10 +106,15 @@ async def download_file(
     db: AsyncSession = Depends(get_db)
 ):
     """
-    Download a file
-    - Can be accessed by admin (with JWT) or client (with access_key)
-    - Logs download in background
-    - Returns file as streaming response
+    下载文件 - 安全下载与防扯皮日志
+    
+    核心逻辑：
+    1. 验证访问权限（管理员JWT或客户端access_key）
+    2. 记录访问日志（IP、时间戳、文件名）
+    3. 如果文件在OSS上，生成签名URL并302重定向
+    4. 如果文件在本地，直接流式返回
+    
+    重要：OSS Bucket必须设置为"私有(Private)"，否则日志无意义
     """
     # Get file from database
     result = await db.execute(select(File).where(File.id == file_id))
@@ -139,7 +145,7 @@ async def download_file(
                 detail="Access denied"
             )
         
-        # Log download in background
+        # 【关键】记录下载日志 - 防扯皮证据
         ip = get_client_ip(request)
         ua = get_user_agent(request)
         background_tasks.add_task(
@@ -151,7 +157,22 @@ async def download_file(
             filename=db_file.filename_original
         )
     
-    # Check if file exists on disk (in order-specific directory)
+    # 检查文件是否存储在 OSS 上
+    if db_file.oss_key and db_file.is_uploaded and oss_client.enabled:
+        # OSS 模式：生成签名URL并302重定向
+        # 这是最优雅的方式，浏览器自动处理，用户无感知
+        try:
+            signed_url = oss_client.generate_download_url(
+                oss_key=db_file.oss_key,
+                expires=3600,  # 1小时有效期
+                filename=db_file.filename_original
+            )
+            return RedirectResponse(url=signed_url, status_code=302)
+        except RuntimeError as e:
+            # OSS 签名失败，尝试本地文件
+            pass
+    
+    # 本地文件模式：流式返回
     order_dir = settings.get_order_file_path(order.access_key)
     file_path = order_dir / db_file.filename_saved
     
@@ -203,6 +224,10 @@ async def delete_file(
         file_path = order_dir / db_file.filename_saved
         if file_path.exists():
             os.remove(file_path)
+        
+        # 如果文件在 OSS 上，也删除 OSS 文件
+        if db_file.oss_key and oss_client.enabled:
+            oss_client.delete_file(db_file.oss_key)
     
     # Delete from database
     await db.delete(db_file)

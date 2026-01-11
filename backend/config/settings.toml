@@ -13,3 +13,18 @@ admin_key_hash = "$2b$12$oPjteVKw7FLEVUmqGPJ0xe046x0vPRoHncLVksyKkYOOrwmZDhYwW"
 [upload]
 client_max_file_size_mb = 300
 client_max_files_per_order = 5
+
+# 阿里云 OSS 配置
+# Bucket 必须设置为"私有(Private)"权限，否则签名和日志将失效
+[oss]
+enabled = false  # 是否启用 OSS，false 时使用本地存储
+access_key_id = ""
+access_key_secret = ""
+endpoint = "oss-cn-hangzhou.aliyuncs.com"  # OSS 区域端点
+bucket_name = ""
+# 回调URL，OSS上传成功后会调用此地址
+callback_url = "http://your-domain.com/api/v1/client/upload-callback"
+# 签名过期时间（秒）
+expire_seconds = 300
+# 上传目录前缀
+upload_prefix = "temp_uploads"

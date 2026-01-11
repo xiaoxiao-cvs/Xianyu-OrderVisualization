@@ -10,9 +10,17 @@ interface UploadDialogProps {
   onOpenChange: (open: boolean) => void
   order: Order
   onSuccess: () => void
+  /** 上传文件类型：req=需求文件，source=源码文件 */
+  fileType?: 'req' | 'source'
 }
 
-export default function UploadDialog({ open, onOpenChange, order, onSuccess }: UploadDialogProps) {
+export default function UploadDialog({ 
+  open, 
+  onOpenChange, 
+  order, 
+  onSuccess,
+  fileType = 'source'  // 默认为源码文件（管理员发货）
+}: UploadDialogProps) {
   const { addToast } = useToast()
   const [uploading, setUploading] = React.useState(false)
   const [progress, setProgress] = React.useState(0)
@@ -43,7 +51,8 @@ export default function UploadDialog({ open, onOpenChange, order, onSuccess }: U
     setProgress(0)
 
     try {
-      await fileApi.upload(order.id, selectedFile, 'delivery', (percent) => {
+      // 使用 access_key 上传
+      await fileApi.upload(order.access_key, fileType, selectedFile, (percent) => {
         setProgress(percent)
       })
       addToast({ title: '发货成功', description: '文件已上传', variant: 'success' })

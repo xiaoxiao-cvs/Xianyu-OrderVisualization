@@ -1,16 +1,23 @@
 from fastapi import APIRouter, Depends, BackgroundTasks, Request, HTTPException, status, UploadFile, File as FastAPIFile
+from fastapi.responses import JSONResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func
 import uuid
 from pathlib import Path
+from typing import Optional
 from app.db.session import get_db
-from app.core.config import settings
+from app.core.config import settings, oss_settings
 from app.core.deps import get_order_by_hash, get_client_ip, get_user_agent
-from app.models.order import Order
+from app.models.order import Order, OrderStatus
 from app.models.file import File, FileType
 from app.models.log import AccessLog
 from app.schemas.order import OrderResponse
-from app.schemas.file import FileListResponse, FileResponse
+from app.schemas.file import (
+    FileListResponse, FileResponse, 
+    OSSSignatureResponse, OSSCallbackRequest,
+    FileHashCheckRequest, FileHashCheckResponse
+)
+from app.utils.oss import oss_client
 
 router = APIRouter()
 
@@ -71,9 +78,13 @@ async def get_order_files(
 ):
     """
     Get list of files associated with the order
+    Only returns files that are uploaded and selected
     """
     result = await db.execute(
-        select(File).where(File.order_id == order.id).order_by(File.uploaded_at.desc())
+        select(File).where(
+            File.order_id == order.id,
+            File.is_selected == True  # 只返回被选中的文件
+        ).order_by(File.uploaded_at.desc())
     )
     files = result.scalars().all()
     
@@ -165,3 +176,205 @@ async def client_upload_file(
     )
     
     return db_file
+
+
+# ==================== OSS 直传相关接口 ====================
+
+
+@router.post("/{access_key}/check-hash", response_model=FileHashCheckResponse)
+async def check_file_hash(
+    access_key: str,
+    request: FileHashCheckRequest,
+    db: AsyncSession = Depends(get_db),
+    order: Order = Depends(get_order_by_hash)
+):
+    """
+    检查文件 Hash 是否已存在（用于秒传/查重）
+    
+    前端在上传前先计算文件 SHA256，调用此接口检查是否已存在
+    """
+    # 在当前订单下查找相同 Hash 的文件
+    result = await db.execute(
+        select(File).where(
+            File.order_id == order.id,
+            File.file_hash == request.file_hash,
+            File.is_uploaded == True
+        )
+    )
+    existing_file = result.scalars().first()
+    
+    if existing_file:
+        return FileHashCheckResponse(
+            exists=True,
+            file_id=existing_file.id,
+            message="文件已存在，无需重复上传"
+        )
+    
+    return FileHashCheckResponse(
+        exists=False,
+        file_id=None,
+        message="文件不存在，可以上传"
+    )
+
+
+@router.get("/{access_key}/oss-signature", response_model=OSSSignatureResponse)
+async def get_oss_signature(
+    access_key: str,
+    file_hash: str,
+    filename: str,
+    content_type: str = "application/octet-stream",
+    db: AsyncSession = Depends(get_db),
+    order: Order = Depends(get_order_by_hash)
+):
+    """
+    获取 OSS 前端直传签名
+    
+    前端使用此签名直接上传文件到 OSS，不消耗服务器带宽
+    
+    Args:
+        access_key: 订单访问密钥
+        file_hash: 文件 SHA256 哈希（前端计算）
+        filename: 原始文件名
+        content_type: 文件 MIME 类型
+    """
+    if not oss_client.enabled:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="OSS 服务未启用，请使用传统上传方式"
+        )
+    
+    # 检查文件数量限制
+    count_result = await db.execute(
+        select(func.count(File.id)).where(
+            File.order_id == order.id,
+            File.file_type == FileType.req
+        )
+    )
+    current_count = count_result.scalar() or 0
+    
+    if current_count >= settings.CLIENT_MAX_FILES_PER_ORDER:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"最多上传 {settings.CLIENT_MAX_FILES_PER_ORDER} 个文件"
+        )
+    
+    try:
+        signature_data = oss_client.generate_upload_signature(
+            access_key=access_key,
+            file_hash=file_hash,
+            filename=filename,
+            content_type=content_type
+        )
+        
+        return OSSSignatureResponse(
+            access_id=signature_data["accessid"],
+            policy=signature_data["policy"],
+            signature=signature_data["signature"],
+            dir=signature_data["dir"],
+            host=signature_data["host"],
+            expire=signature_data["expire"],
+            callback=signature_data["callback"]
+        )
+    except RuntimeError as e:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=str(e)
+        )
+
+
+@router.post("/upload-callback")
+async def oss_upload_callback(
+    request: Request,
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    OSS 上传成功后的回调接口
+    
+    OSS 会在文件上传成功后调用此接口，服务端在此记录文件信息到数据库
+    
+    注意：生产环境必须验证回调签名，防止伪造请求
+    """
+    # TODO: 生产环境需要验证 OSS 回调签名
+    # authorization = request.headers.get("Authorization", "")
+    # pub_key_url = request.headers.get("x-oss-pub-key-url", "")
+    # body = await request.body()
+    # if not oss_client.verify_callback(authorization, pub_key_url, body, str(request.url.path)):
+    #     raise HTTPException(status_code=403, detail="Invalid callback signature")
+    
+    # 解析回调参数（URL-encoded form）
+    form_data = await request.form()
+    
+    bucket = form_data.get("bucket", "")
+    oss_key = form_data.get("object", "")  # OSS 存储路径
+    size = int(form_data.get("size", 0))
+    etag = form_data.get("etag", "")
+    mime_type = form_data.get("mimeType", "")
+    access_key = form_data.get("access_key", "")
+    file_hash = form_data.get("file_hash", "")
+    filename_original = form_data.get("filename_original", "")
+    
+    if not all([access_key, oss_key, filename_original]):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Missing required callback parameters"
+        )
+    
+    # 查找订单
+    result = await db.execute(
+        select(Order).where(Order.access_key == access_key)
+    )
+    order = result.scalars().first()
+    
+    if not order:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Order not found: {access_key}"
+        )
+    
+    # 检查是否已存在相同文件
+    existing_result = await db.execute(
+        select(File).where(
+            File.order_id == order.id,
+            File.oss_key == oss_key
+        )
+    )
+    if existing_result.scalars().first():
+        # 文件已存在，返回成功（幂等性）
+        return JSONResponse(content={"status": "ok", "message": "File already exists"})
+    
+    # 创建文件记录
+    db_file = File(
+        order_id=order.id,
+        filename_original=filename_original,
+        filename_saved=oss_key.split("/")[-1],  # 从 OSS key 提取文件名
+        file_size=size,
+        file_type=FileType.req,  # 客户上传的都是需求文件
+        file_hash=file_hash,
+        oss_key=oss_key,
+        is_uploaded=True,
+        is_selected=True
+    )
+    
+    db.add(db_file)
+    await db.commit()
+    
+    # 返回 OSS 要求的格式
+    return JSONResponse(content={
+        "status": "ok",
+        "file_id": db_file.id,
+        "message": "Upload callback processed successfully"
+    })
+
+
+@router.get("/{access_key}/oss-status")
+async def get_oss_status(access_key: str):
+    """
+    获取 OSS 服务状态
+    
+    前端可通过此接口判断是否使用 OSS 直传
+    """
+    return {
+        "oss_enabled": oss_client.enabled,
+        "max_file_size_mb": settings.CLIENT_MAX_FILE_SIZE_MB,
+        "max_files_per_order": settings.CLIENT_MAX_FILES_PER_ORDER
+    }
