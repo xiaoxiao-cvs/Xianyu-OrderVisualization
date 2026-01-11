@@ -8,10 +8,24 @@ import hmac
 import hashlib
 import time
 from datetime import datetime, timedelta
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, Tuple, TYPE_CHECKING
 from dataclasses import dataclass
 
 from app.core.config import oss_settings
+
+# httpx 用于异步 HTTP 请求，延迟导入以避免启动时报错
+if TYPE_CHECKING:
+    import httpx
+
+
+@dataclass
+class OSSFileInfo:
+    """OSS 文件元信息"""
+    exists: bool
+    size: int = 0
+    etag: str = ""
+    content_type: str = ""
+    last_modified: str = ""
 
 
 @dataclass
@@ -157,6 +171,95 @@ class OSSClient:
         # bucket = oss2.Bucket(auth, endpoint, bucket_name)
         # bucket.delete_object(oss_key)
         return True
+    
+    async def head_object(self, oss_key: str) -> OSSFileInfo:
+        """
+        获取 OSS 文件元信息（HEAD 请求）
+        
+        用于验证文件是否真实存在于 OSS，防止伪造上传回调
+        
+        Args:
+            oss_key: 文件在 OSS 中的路径
+            
+        Returns:
+            OSSFileInfo 对象，包含文件是否存在及其元信息
+        """
+        if not self.enabled:
+            raise RuntimeError("OSS 未启用或配置不完整")
+        
+        import httpx
+        
+        # 构建签名
+        date_str = datetime.utcnow().strftime("%a, %d %b %Y %H:%M:%S GMT")
+        string_to_sign = f"HEAD\n\n\n{date_str}\n/{oss_settings.bucket_name}/{oss_key}"
+        signature = self._sign_string(string_to_sign)
+        
+        # 构建请求头
+        headers = {
+            "Date": date_str,
+            "Authorization": f"OSS {oss_settings.access_key_id}:{signature}"
+        }
+        
+        url = f"{oss_settings.host}/{oss_key}"
+        
+        try:
+            async with httpx.AsyncClient(timeout=10.0) as client:
+                response = await client.head(url, headers=headers)
+                
+                if response.status_code == 200:
+                    return OSSFileInfo(
+                        exists=True,
+                        size=int(response.headers.get("Content-Length", 0)),
+                        etag=response.headers.get("ETag", "").strip('"'),
+                        content_type=response.headers.get("Content-Type", ""),
+                        last_modified=response.headers.get("Last-Modified", "")
+                    )
+                elif response.status_code == 404:
+                    return OSSFileInfo(exists=False)
+                else:
+                    # 其他错误
+                    raise RuntimeError(f"OSS HEAD 请求失败: {response.status_code}")
+        except httpx.RequestError as e:
+            raise RuntimeError(f"OSS 请求异常: {str(e)}")
+    
+    def head_object_sync(self, oss_key: str) -> OSSFileInfo:
+        """
+        同步版本的 head_object（用于非异步上下文）
+        """
+        if not self.enabled:
+            raise RuntimeError("OSS 未启用或配置不完整")
+        
+        import httpx
+        
+        date_str = datetime.utcnow().strftime("%a, %d %b %Y %H:%M:%S GMT")
+        string_to_sign = f"HEAD\n\n\n{date_str}\n/{oss_settings.bucket_name}/{oss_key}"
+        signature = self._sign_string(string_to_sign)
+        
+        headers = {
+            "Date": date_str,
+            "Authorization": f"OSS {oss_settings.access_key_id}:{signature}"
+        }
+        
+        url = f"{oss_settings.host}/{oss_key}"
+        
+        try:
+            with httpx.Client(timeout=10.0) as client:
+                response = client.head(url, headers=headers)
+                
+                if response.status_code == 200:
+                    return OSSFileInfo(
+                        exists=True,
+                        size=int(response.headers.get("Content-Length", 0)),
+                        etag=response.headers.get("ETag", "").strip('"'),
+                        content_type=response.headers.get("Content-Type", ""),
+                        last_modified=response.headers.get("Last-Modified", "")
+                    )
+                elif response.status_code == 404:
+                    return OSSFileInfo(exists=False)
+                else:
+                    raise RuntimeError(f"OSS HEAD 请求失败: {response.status_code}")
+        except httpx.RequestError as e:
+            raise RuntimeError(f"OSS 请求异常: {str(e)}")
     
     def _sign_policy(self, policy_base64: str) -> str:
         """签名 Policy"""

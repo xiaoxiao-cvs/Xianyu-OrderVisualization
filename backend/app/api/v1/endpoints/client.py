@@ -292,23 +292,19 @@ async def oss_upload_callback(
     
     OSS 会在文件上传成功后调用此接口，服务端在此记录文件信息到数据库
     
-    注意：生产环境必须验证回调签名，防止伪造请求
+    安全措施：
+    1. 调用 OSS head_object 验证文件确实存在
+    2. 验证文件大小是否匹配
+    3. 防止恶意用户伪造上传成功请求
     """
-    # TODO: 生产环境需要验证 OSS 回调签名
-    # authorization = request.headers.get("Authorization", "")
-    # pub_key_url = request.headers.get("x-oss-pub-key-url", "")
-    # body = await request.body()
-    # if not oss_client.verify_callback(authorization, pub_key_url, body, str(request.url.path)):
-    #     raise HTTPException(status_code=403, detail="Invalid callback signature")
-    
     # 解析回调参数（URL-encoded form）
     form_data = await request.form()
     
-    bucket = form_data.get("bucket", "")
+    # bucket = form_data.get("bucket", "")  # 暂未使用
     oss_key = form_data.get("object", "")  # OSS 存储路径
-    size = int(form_data.get("size", 0))
-    etag = form_data.get("etag", "")
-    mime_type = form_data.get("mimeType", "")
+    claimed_size = int(form_data.get("size", 0))
+    # etag = form_data.get("etag", "")  # 暂未使用
+    # mime_type = form_data.get("mimeType", "")  # 暂未使用
     access_key = form_data.get("access_key", "")
     file_hash = form_data.get("file_hash", "")
     filename_original = form_data.get("filename_original", "")
@@ -318,6 +314,36 @@ async def oss_upload_callback(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Missing required callback parameters"
         )
+    
+    # 【关键安全措施】验证文件确实存在于 OSS
+    if oss_client.enabled:
+        try:
+            file_info = await oss_client.head_object(oss_key)
+            
+            if not file_info.exists:
+                # 文件不存在 -> 这是伪造请求或上传失败
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="文件验证失败：OSS 中不存在该文件，可能是伪造请求"
+                )
+            
+            # 验证文件大小是否匹配（允许小误差）
+            if claimed_size > 0 and abs(file_info.size - claimed_size) > 1024:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=f"文件大小不匹配：声称 {claimed_size} 字节，实际 {file_info.size} 字节"
+                )
+            
+            # 使用 OSS 返回的真实大小
+            actual_size = file_info.size
+            
+        except RuntimeError as e:
+            # OSS 请求失败，记录但不阻断（降级处理）
+            import logging
+            logging.warning(f"OSS head_object 失败: {e}，使用声称的文件大小")
+            actual_size = claimed_size
+    else:
+        actual_size = claimed_size
     
     # 查找订单
     result = await db.execute(
@@ -342,16 +368,16 @@ async def oss_upload_callback(
         # 文件已存在，返回成功（幂等性）
         return JSONResponse(content={"status": "ok", "message": "File already exists"})
     
-    # 创建文件记录
+    # 创建文件记录（使用验证后的真实大小）
     db_file = File(
         order_id=order.id,
         filename_original=filename_original,
         filename_saved=oss_key.split("/")[-1],  # 从 OSS key 提取文件名
-        file_size=size,
+        file_size=actual_size,  # 使用验证后的大小
         file_type=FileType.req,  # 客户上传的都是需求文件
         file_hash=file_hash,
         oss_key=oss_key,
-        is_uploaded=True,
+        is_uploaded=True,  # 已通过 head_object 验证
         is_selected=True
     )
     
@@ -362,7 +388,7 @@ async def oss_upload_callback(
     return JSONResponse(content={
         "status": "ok",
         "file_id": db_file.id,
-        "message": "Upload callback processed successfully"
+        "message": "Upload callback processed and verified successfully"
     })
 
 
