@@ -113,3 +113,13 @@ class OrderFullResponse(BaseModel):
     order: OrderResponse
     files: List[Dict[str, Any]] = Field(default_factory=list)
     timeline: List[Dict[str, Any]] = Field(default_factory=list)
+
+
+class StatusUpdateRequest(BaseModel):
+    status: OrderStatus
+    note: Optional[str] = None
+
+
+class StatusOverrideRequest(BaseModel):
+    status: OrderStatus
+    reason: str
