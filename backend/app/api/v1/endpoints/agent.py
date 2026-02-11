@@ -1,4 +1,6 @@
 import uuid
+import secrets
+import string
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import select
@@ -21,6 +23,11 @@ from app.schemas.order import OrderResponse
 from app.schemas.timeline import TimelineResponse
 
 router = APIRouter()
+
+
+def _generate_access_key(length: int = 16) -> str:
+    alphabet = string.ascii_letters + string.digits
+    return "".join(secrets.choice(alphabet) for _ in range(length))
 
 
 def _timeline(order_id: int, event_type: TimelineEventType, event_data: dict) -> OrderTimeline:
@@ -48,6 +55,8 @@ async def agent_create_order(
 ):
     data = payload.model_dump(exclude_unset=True)
     note = data.pop("initial_timeline_note", None)
+    if not data.get("access_key"):
+        data["access_key"] = _generate_access_key()
     order = Order(**data)
     if order.status is None:
         order.status = OrderStatus.draft
