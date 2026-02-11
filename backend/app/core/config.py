@@ -19,7 +19,7 @@ CONFIG_DIR = BACKEND_DIR / "config"
 CONFIG_FILE = CONFIG_DIR / "settings.toml"
 DATA_DIR = BACKEND_DIR / "data"
 DATABASE_DIR = DATA_DIR / "database"
-ORDER_FILE_DIR = DATA_DIR / "Order File"
+ORDER_FILE_DIR = DATA_DIR / "order_files"
 
 
 def generate_secret_key(length: int = 32) -> str:

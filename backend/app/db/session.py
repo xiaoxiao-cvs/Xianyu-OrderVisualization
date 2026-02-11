@@ -34,5 +34,17 @@ async def get_db():
 # Database initialization
 async def init_db():
     """Initialize database tables"""
+    # Import models before create_all so metadata is fully registered.
+    from app import models  # noqa: F401
+
     async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+
+
+async def reset_db():
+    """Drop and recreate all tables."""
+    from app import models  # noqa: F401
+
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.drop_all)
         await conn.run_sync(Base.metadata.create_all)
