@@ -24,6 +24,7 @@ from app.schemas.order import (
     StatusUpdateRequest,
 )
 from app.schemas.timeline import TimelineAppendRequest, TimelineListResponse, TimelineResponse
+from app.utils.notification import create_notification
 
 router = APIRouter()
 
@@ -150,6 +151,13 @@ async def create_order(
         TimelineActor.admin,
         {"from": None, "to": order.status.value, "note": "订单创建"},
     )
+    await create_notification(
+        db,
+        order_id=order.id,
+        type="order_created",
+        title="新订单已创建",
+        content=f"订单 #{order.id} 已创建，客户：{order.client_name}",
+    )
 
     await db.commit()
     await db.refresh(order)
@@ -210,6 +218,13 @@ async def update_status(
         TimelineActor.admin,
         {"from": previous_status.value, "to": order.status.value, "note": payload.note},
     )
+    await create_notification(
+        db,
+        order_id=order.id,
+        type="status_change",
+        title="订单状态已更新",
+        content=f"订单 #{order.id}: {previous_status.value} -> {order.status.value}",
+    )
     await db.commit()
     await db.refresh(order)
     return order
@@ -237,6 +252,14 @@ async def override_status(
             "override": True,
             "reason": payload.reason,
         },
+    )
+    await create_notification(
+        db,
+        order_id=order.id,
+        type="status_override",
+        title="订单状态被强制更新",
+        content=f"订单 #{order.id} 强制更新为 {order.status.value}",
+        channel="xianyu_stub",
     )
     await db.commit()
     await db.refresh(order)

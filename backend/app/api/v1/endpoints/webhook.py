@@ -15,6 +15,7 @@ from app.schemas.webhook import (
     WebhookAck,
     XianyuMessageEvent,
 )
+from app.utils.notification import create_notification
 
 router = APIRouter()
 
@@ -78,6 +79,14 @@ async def webhook_xianyu_message(
             {"message": event.message, "xianyu_account": event.xianyu_account},
         )
     )
+    await create_notification(
+        db,
+        order_id=order.id,
+        type="customer_message",
+        title="收到客户新消息",
+        content=event.message[:120],
+        channel="xianyu_stub",
+    )
 
     await db.commit()
     return {"status": "ok", "order_id": order.id}
@@ -109,6 +118,13 @@ async def webhook_agent_update(
                 TimelineActor.ai_agent,
                 {"from": previous.value, "to": order.status.value, "note": event.note},
             )
+        )
+        await create_notification(
+            db,
+            order_id=order.id,
+            type="agent_status",
+            title="Agent 更新了订单状态",
+            content=f"{previous.value} -> {order.status.value}",
         )
 
     if event.requirements:
@@ -150,6 +166,13 @@ async def webhook_codex_progress(
             {"progress": event.progress, "stage": event.stage},
         )
     )
+    await create_notification(
+        db,
+        order_id=order.id,
+        type="codex_progress",
+        title="Codex 进度更新",
+        content=f"阶段: {event.stage or 'unknown'}, 进度: {event.progress:.1f}%",
+    )
     await db.commit()
     return {"status": "ok", "order_id": order.id}
 
@@ -185,6 +208,13 @@ async def webhook_codex_result(
                 "artifacts": event.artifacts,
             },
         )
+    )
+    await create_notification(
+        db,
+        order_id=order.id,
+        type="codex_result",
+        title="Codex 结果回调",
+        content=event.summary or ("测试通过" if event.success else "测试失败，进入修复"),
     )
 
     await db.commit()
