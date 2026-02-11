@@ -1,27 +1,62 @@
-from fastapi import APIRouter, Depends, HTTPException, status, Query
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, delete, func, update
-from typing import Optional, List
 from datetime import datetime
 import secrets
 import string
-from app.db.session import get_db
+from typing import Optional
+
+from fastapi import APIRouter, Depends, HTTPException, Query, status
+from sqlalchemy import String, and_, cast, func, or_, select
+from sqlalchemy.ext.asyncio import AsyncSession
+
 from app.core.deps import get_current_admin
-from app.models.order import Order, OrderStatus
+from app.core.status_machine import InvalidStatusTransition, apply_status_transition
+from app.db.session import get_db
 from app.models.file import File
-from app.models.log import AccessLog
-from app.schemas.order import OrderCreate, OrderResponse, OrderListResponse, OrderConvertRequest, OrderUpdate
-from app.schemas.log import AccessLogResponse, AccessLogListResponse
+from app.models.order import Order, OrderStatus, PriorityLevel, ProjectType
+from app.models.timeline import OrderTimeline, TimelineActor, TimelineEventType
 from app.schemas.file import FileListResponse
-from app.utils.oss import oss_client
+from app.schemas.order import (
+    OrderCreate,
+    OrderFullResponse,
+    OrderListResponse,
+    OrderResponse,
+    OrderUpdate,
+    StatusOverrideRequest,
+    StatusUpdateRequest,
+)
+from app.schemas.timeline import TimelineAppendRequest, TimelineListResponse, TimelineResponse
 
 router = APIRouter()
 
 
-def generate_access_key(length: int = 12) -> str:
-    """Generate a random access key"""
+def generate_access_key(length: int = 16) -> str:
     alphabet = string.ascii_letters + string.digits
-    return ''.join(secrets.choice(alphabet) for _ in range(length))
+    return "".join(secrets.choice(alphabet) for _ in range(length))
+
+
+async def _get_order_or_404(db: AsyncSession, order_id: int) -> Order:
+    result = await db.execute(select(Order).where(Order.id == order_id))
+    order = result.scalar_one_or_none()
+    if order is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Order not found")
+    return order
+
+
+async def _add_timeline(
+    db: AsyncSession,
+    order_id: int,
+    event_type: TimelineEventType,
+    actor: TimelineActor,
+    event_data: dict,
+) -> OrderTimeline:
+    event = OrderTimeline(
+        order_id=order_id,
+        event_type=event_type,
+        actor=actor,
+        event_data=event_data,
+    )
+    db.add(event)
+    await db.flush()
+    return event
 
 
 @router.get("/", response_model=OrderListResponse)
@@ -29,62 +64,95 @@ async def list_orders(
     skip: int = Query(0, ge=0),
     limit: int = Query(50, ge=1, le=100),
     status_filter: Optional[OrderStatus] = None,
+    project_type: Optional[ProjectType] = None,
+    priority: Optional[PriorityLevel] = None,
+    xianyu_account: Optional[str] = None,
+    tag: Optional[str] = None,
+    search: Optional[str] = None,
+    created_from: Optional[datetime] = None,
+    created_to: Optional[datetime] = None,
     db: AsyncSession = Depends(get_db),
-    _: bool = Depends(get_current_admin)
+    _: bool = Depends(get_current_admin),
 ):
-    """
-    List all orders with pagination and optional status filter
-    """
+    filters = []
+    if status_filter:
+        filters.append(Order.status == status_filter)
+    if project_type:
+        filters.append(Order.project_type == project_type)
+    if priority:
+        filters.append(Order.priority == priority)
+    if xianyu_account:
+        filters.append(Order.xianyu_account == xianyu_account)
+    if created_from:
+        filters.append(Order.created_at >= created_from)
+    if created_to:
+        filters.append(Order.created_at <= created_to)
+    if tag:
+        filters.append(
+            or_(
+                cast(Order.tags, String).like(f'%"{tag}"%'),
+                cast(Order.custom_tags, String).like(f'%"{tag}"%'),
+            )
+        )
+    if search:
+        keyword = f"%{search}%"
+        filters.append(
+            or_(
+                Order.client_name.like(keyword),
+                Order.description.like(keyword),
+                cast(Order.requirements, String).like(keyword),
+                Order.github_repo_name.like(keyword),
+                Order.xianyu_order_id.like(keyword),
+            )
+        )
+
+    where_clause = and_(*filters) if filters else None
+
     query = select(Order)
-    
-    if status_filter:
-        query = query.where(Order.status == status_filter)
-    
-    query = query.offset(skip).limit(limit).order_by(Order.created_at.desc())
-    
-    result = await db.execute(query)
-    orders = result.scalars().all()
-    
-    # Get total count
     count_query = select(func.count(Order.id))
-    if status_filter:
-        count_query = count_query.where(Order.status == status_filter)
-    
-    count_result = await db.execute(count_query)
-    total = count_result.scalar()
-    
-    return {"total": total, "items": orders}
+    if where_clause is not None:
+        query = query.where(where_clause)
+        count_query = count_query.where(where_clause)
+
+    query = query.order_by(Order.created_at.desc()).offset(skip).limit(limit)
+    result = await db.execute(query)
+    items = result.scalars().all()
+
+    total = (await db.execute(count_query)).scalar() or 0
+    return {"total": total, "items": items}
 
 
 @router.post("/", response_model=OrderResponse, status_code=status.HTTP_201_CREATED)
 async def create_order(
-    order_in: OrderCreate,
+    payload: OrderCreate,
     db: AsyncSession = Depends(get_db),
-    _: bool = Depends(get_current_admin)
+    _: bool = Depends(get_current_admin),
 ):
-    """
-    Create a new order with auto-generated access key
-    """
-    # Generate unique access key
-    while True:
-        access_key = generate_access_key()
-        result = await db.execute(select(Order).where(Order.access_key == access_key))
-        if result.scalar_one_or_none() is None:
-            break
-    
-    # Create order
-    order = Order(
-        access_key=access_key,
-        client_name=order_in.client_name,
-        description=order_in.description,
-        status=order_in.status,
-        expires_at=order_in.expires_at
-    )
-    
+    access_key = payload.access_key
+    if not access_key:
+        while True:
+            candidate = generate_access_key()
+            exists = await db.execute(select(Order.id).where(Order.access_key == candidate))
+            if exists.scalar_one_or_none() is None:
+                access_key = candidate
+                break
+
+    data = payload.model_dump(exclude_unset=True)
+    data.pop("access_key", None)
+    order = Order(access_key=access_key, **data)
     db.add(order)
+    await db.flush()
+
+    await _add_timeline(
+        db,
+        order.id,
+        TimelineEventType.status_change,
+        TimelineActor.admin,
+        {"from": None, "to": order.status.value, "note": "订单创建"},
+    )
+
     await db.commit()
     await db.refresh(order)
-    
     return order
 
 
@@ -92,248 +160,188 @@ async def create_order(
 async def get_order(
     order_id: int,
     db: AsyncSession = Depends(get_db),
-    _: bool = Depends(get_current_admin)
+    _: bool = Depends(get_current_admin),
 ):
-    """
-    Get order details by ID
-    """
-    result = await db.execute(select(Order).where(Order.id == order_id))
-    order = result.scalar_one_or_none()
-    
-    if not order:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Order not found"
-        )
-    
+    return await _get_order_or_404(db, order_id)
+
+
+@router.patch("/{order_id}", response_model=OrderResponse)
+async def update_order(
+    order_id: int,
+    payload: OrderUpdate,
+    db: AsyncSession = Depends(get_db),
+    _: bool = Depends(get_current_admin),
+):
+    order = await _get_order_or_404(db, order_id)
+
+    for field, value in payload.model_dump(exclude_unset=True).items():
+        setattr(order, field, value)
+
+    await _add_timeline(
+        db,
+        order.id,
+        TimelineEventType.note,
+        TimelineActor.admin,
+        {"message": "管理员更新订单信息"},
+    )
+    await db.commit()
+    await db.refresh(order)
     return order
 
 
-@router.get("/{order_id}/logs", response_model=AccessLogListResponse)
-async def get_order_logs(
+@router.post("/{order_id}/status", response_model=OrderResponse)
+async def update_status(
+    order_id: int,
+    payload: StatusUpdateRequest,
+    db: AsyncSession = Depends(get_db),
+    _: bool = Depends(get_current_admin),
+):
+    order = await _get_order_or_404(db, order_id)
+    previous_status = order.status
+    try:
+        apply_status_transition(order, payload.status, override=False)
+    except InvalidStatusTransition as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+
+    await _add_timeline(
+        db,
+        order.id,
+        TimelineEventType.status_change,
+        TimelineActor.admin,
+        {"from": previous_status.value, "to": order.status.value, "note": payload.note},
+    )
+    await db.commit()
+    await db.refresh(order)
+    return order
+
+
+@router.post("/{order_id}/status/override", response_model=OrderResponse)
+async def override_status(
+    order_id: int,
+    payload: StatusOverrideRequest,
+    db: AsyncSession = Depends(get_db),
+    _: bool = Depends(get_current_admin),
+):
+    order = await _get_order_or_404(db, order_id)
+    previous_status = order.status
+    apply_status_transition(order, payload.status, override=True)
+
+    await _add_timeline(
+        db,
+        order.id,
+        TimelineEventType.status_change,
+        TimelineActor.admin,
+        {
+            "from": previous_status.value,
+            "to": order.status.value,
+            "override": True,
+            "reason": payload.reason,
+        },
+    )
+    await db.commit()
+    await db.refresh(order)
+    return order
+
+
+@router.get("/{order_id}/timeline", response_model=TimelineListResponse)
+async def get_timeline(
     order_id: int,
     skip: int = Query(0, ge=0),
     limit: int = Query(100, ge=1, le=500),
     db: AsyncSession = Depends(get_db),
-    _: bool = Depends(get_current_admin)
+    _: bool = Depends(get_current_admin),
 ):
-    """
-    Get all access logs for a specific order
-    This is a core feature for generating evidence of client access
-    """
-    # Verify order exists
-    result = await db.execute(select(Order).where(Order.id == order_id))
-    order = result.scalar_one_or_none()
-    
-    if not order:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Order not found"
-        )
-    
-    # Get logs
-    query = select(AccessLog).where(AccessLog.order_id == order_id)\
-        .order_by(AccessLog.timestamp.desc())\
-        .offset(skip).limit(limit)
-    
-    result = await db.execute(query)
-    logs = result.scalars().all()
-    
-    # Get total count
-    count_query = select(func.count(AccessLog.id)).where(AccessLog.order_id == order_id)
-    count_result = await db.execute(count_query)
-    total = count_result.scalar()
-    
-    return {"total": total, "logs": logs}
+    await _get_order_or_404(db, order_id)
+    query = (
+        select(OrderTimeline)
+        .where(OrderTimeline.order_id == order_id)
+        .order_by(OrderTimeline.created_at.desc())
+        .offset(skip)
+        .limit(limit)
+    )
+    items = (await db.execute(query)).scalars().all()
+    total = (
+        await db.execute(select(func.count(OrderTimeline.id)).where(OrderTimeline.order_id == order_id))
+    ).scalar() or 0
+    return {"total": total, "items": items}
 
 
-@router.delete("/{order_id}", status_code=status.HTTP_204_NO_CONTENT)
-async def delete_order(
+@router.post("/{order_id}/timeline", response_model=TimelineResponse, status_code=status.HTTP_201_CREATED)
+async def append_timeline(
+    order_id: int,
+    payload: TimelineAppendRequest,
+    db: AsyncSession = Depends(get_db),
+    _: bool = Depends(get_current_admin),
+):
+    await _get_order_or_404(db, order_id)
+    event = await _add_timeline(
+        db,
+        order_id,
+        payload.event_type,
+        payload.actor or TimelineActor.system,
+        payload.event_data,
+    )
+    await db.commit()
+    await db.refresh(event)
+    return event
+
+
+@router.get("/{order_id}/full", response_model=OrderFullResponse)
+async def get_order_full(
     order_id: int,
     db: AsyncSession = Depends(get_db),
-    _: bool = Depends(get_current_admin)
+    _: bool = Depends(get_current_admin),
 ):
-    """
-    Delete an order and all associated files and logs
-    """
-    result = await db.execute(select(Order).where(Order.id == order_id))
-    order = result.scalar_one_or_none()
-    
-    if not order:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Order not found"
+    order = await _get_order_or_404(db, order_id)
+    files = (await db.execute(select(File).where(File.order_id == order_id))).scalars().all()
+    timeline = (
+        await db.execute(
+            select(OrderTimeline)
+            .where(OrderTimeline.order_id == order_id)
+            .order_by(OrderTimeline.created_at.desc())
         )
-    
-    await db.delete(order)
-    await db.commit()
-    
-    return None
-
-
-# ==================== 订单转正相关接口 ====================
+    ).scalars().all()
+    return {
+        "order": order,
+        "files": [
+            {
+                "id": f.id,
+                "order_id": f.order_id,
+                "filename_original": f.filename_original,
+                "filename_saved": f.filename_saved,
+                "file_size": f.file_size,
+                "file_type": f.file_type.value,
+                "uploaded_at": f.uploaded_at,
+                "file_hash": f.file_hash,
+                "oss_key": f.oss_key,
+                "is_uploaded": f.is_uploaded,
+                "is_selected": f.is_selected,
+            }
+            for f in files
+        ],
+        "timeline": [
+            {
+                "id": t.id,
+                "order_id": t.order_id,
+                "event_type": t.event_type.value,
+                "actor": t.actor.value,
+                "event_data": t.event_data,
+                "created_at": t.created_at,
+            }
+            for t in timeline
+        ],
+    }
 
 
 @router.get("/by-hash/{access_key}", response_model=OrderResponse)
 async def get_order_by_hash(
     access_key: str,
     db: AsyncSession = Depends(get_db),
-    _: bool = Depends(get_current_admin)
+    _: bool = Depends(get_current_admin),
 ):
-    """
-    通过 access_key (Hash) 获取订单详情
-    管理员用于查看临时订单
-    """
-    result = await db.execute(select(Order).where(Order.access_key == access_key))
-    order = result.scalars().first()
-    
-    if not order:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Order not found: {access_key}"
-        )
-    
-    return order
-
-
-@router.get("/by-hash/{access_key}/files", response_model=FileListResponse)
-async def get_order_files_by_hash(
-    access_key: str,
-    include_unselected: bool = True,
-    db: AsyncSession = Depends(get_db),
-    _: bool = Depends(get_current_admin)
-):
-    """
-    通过 access_key 获取订单所有文件
-    管理员用于查看待转正订单的文件列表
-    
-    Args:
-        include_unselected: 是否包含未选中的文件，默认 True（管理员可看全部）
-    """
-    result = await db.execute(select(Order).where(Order.access_key == access_key))
-    order = result.scalars().first()
-    
-    if not order:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Order not found: {access_key}"
-        )
-    
-    query = select(File).where(File.order_id == order.id)
-    if not include_unselected:
-        query = query.where(File.is_selected == True)
-    
-    query = query.order_by(File.uploaded_at.desc())
-    
-    files_result = await db.execute(query)
-    files = files_result.scalars().all()
-    
-    return {"files": files}
-
-
-@router.post("/convert", response_model=OrderResponse)
-async def convert_order(
-    request: OrderConvertRequest,
-    db: AsyncSession = Depends(get_db),
-    _: bool = Depends(get_current_admin)
-):
-    """
-    转正订单：将临时订单与闲鱼订单号绑定
-    
-    操作步骤：
-    1. 验证 access_key 是否存在
-    2. 更新订单状态为 pending，绑定闲鱼订单号
-    3. 标记选中的文件（is_selected=True），其余设为 False
-    4. 可选：删除未选中的文件
-    """
-    # 1. 查找订单
-    result = await db.execute(
-        select(Order).where(Order.access_key == request.access_key)
-    )
-    order = result.scalars().first()
-    
-    if not order:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"订单不存在: {request.access_key}"
-        )
-    
-    # 检查是否已绑定闲鱼订单号
-    if order.xianyu_order_id:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"订单已绑定闲鱼订单号: {order.xianyu_order_id}"
-        )
-    
-    # 2. 更新订单信息
-    order.xianyu_order_id = request.xianyu_order_id
-    order.status = OrderStatus.pending  # 转正后状态改为待开发
-    order.created_at = datetime.utcnow()  # 更新创建时间为转正时间
-    
-    if request.notes:
-        # 追加备注到描述
-        if order.description:
-            order.description += f"\n\n[转正备注] {request.notes}"
-        else:
-            order.description = f"[转正备注] {request.notes}"
-    
-    # 3. 处理文件选择
-    if request.selected_file_ids:
-        # 获取订单下所有文件
-        files_result = await db.execute(
-            select(File).where(File.order_id == order.id)
-        )
-        all_files = files_result.scalars().all()
-        
-        selected_ids_set = set(request.selected_file_ids)
-        
-        for file in all_files:
-            if file.id in selected_ids_set:
-                file.is_selected = True
-            else:
-                file.is_selected = False
-                
-                # 4. 删除未选中的文件
-                if request.delete_unselected:
-                    # 如果文件在 OSS 上，删除 OSS 文件
-                    if file.oss_key and oss_client.enabled:
-                        oss_client.delete_file(file.oss_key)
-                    await db.delete(file)
-    
-    await db.commit()
-    await db.refresh(order)
-    
-    return order
-
-
-@router.patch("/{order_id}", response_model=OrderResponse)
-async def update_order(
-    order_id: int,
-    order_update: OrderUpdate,
-    db: AsyncSession = Depends(get_db),
-    _: bool = Depends(get_current_admin)
-):
-    """
-    更新订单信息（包括闲鱼订单号、状态、备注等）
-    """
-    result = await db.execute(select(Order).where(Order.id == order_id))
-    order = result.scalars().first()
-    
-    if not order:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Order not found"
-        )
-    
-    # 更新非空字段
-    update_data = order_update.model_dump(exclude_unset=True)
-    for field, value in update_data.items():
-        if value is not None:
-            setattr(order, field, value)
-    
-    await db.commit()
-    await db.refresh(order)
-    
+    order = (await db.execute(select(Order).where(Order.access_key == access_key))).scalar_one_or_none()
+    if order is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Order not found")
     return order
 
 
@@ -342,27 +350,41 @@ async def get_order_files(
     order_id: int,
     include_unselected: bool = True,
     db: AsyncSession = Depends(get_db),
-    _: bool = Depends(get_current_admin)
+    _: bool = Depends(get_current_admin),
 ):
-    """
-    获取订单文件列表（管理员）
-    """
-    result = await db.execute(select(Order).where(Order.id == order_id))
-    order = result.scalars().first()
-    
-    if not order:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Order not found"
-        )
-    
+    await _get_order_or_404(db, order_id)
+    query = select(File).where(File.order_id == order_id)
+    if not include_unselected:
+        query = query.where(File.is_selected.is_(True))
+    query = query.order_by(File.uploaded_at.desc())
+    files = (await db.execute(query)).scalars().all()
+    return {"files": files}
+
+
+@router.get("/by-hash/{access_key}/files", response_model=FileListResponse)
+async def get_order_files_by_hash(
+    access_key: str,
+    include_unselected: bool = True,
+    db: AsyncSession = Depends(get_db),
+    _: bool = Depends(get_current_admin),
+):
+    order = (await db.execute(select(Order).where(Order.access_key == access_key))).scalar_one_or_none()
+    if order is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Order not found")
     query = select(File).where(File.order_id == order.id)
     if not include_unselected:
-        query = query.where(File.is_selected == True)
-    
+        query = query.where(File.is_selected.is_(True))
     query = query.order_by(File.uploaded_at.desc())
-    
-    files_result = await db.execute(query)
-    files = files_result.scalars().all()
-    
+    files = (await db.execute(query)).scalars().all()
     return {"files": files}
+
+
+@router.delete("/{order_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_order(
+    order_id: int,
+    db: AsyncSession = Depends(get_db),
+    _: bool = Depends(get_current_admin),
+):
+    order = await _get_order_or_404(db, order_id)
+    await db.delete(order)
+    await db.commit()
