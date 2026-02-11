@@ -1,5 +1,5 @@
 from fastapi import APIRouter
-from app.api.v1.endpoints import auth, client, files, orders, webhook
+from app.api.v1.endpoints import agent, auth, client, files, orders, webhook
 
 api_router = APIRouter()
 
@@ -17,3 +17,4 @@ api_router.include_router(files.router, prefix="/files", tags=["Files"])
 
 # Service routes
 api_router.include_router(webhook.router, prefix="/webhook", tags=["Webhook"])
+api_router.include_router(agent.router, prefix="/agent", tags=["Agent"])

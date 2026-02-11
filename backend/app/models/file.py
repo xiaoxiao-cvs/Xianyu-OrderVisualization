@@ -7,6 +7,9 @@ from app.db.session import Base
 class FileType(str, enum.Enum):
     req = "req"        # Requirement file (客户上传的需求文件)
     source = "source"  # Source code file (管理员上传的源码文件)
+    delivery = "delivery"  # 交付物
+    screenshot = "screenshot"  # 截图
+    log = "log"  # 日志或报告
 
 
 class File(Base):
