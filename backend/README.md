@@ -1,155 +1,58 @@
-# Xianyu Order Visualization - Backend
+# Order Platform Backend (Phase 1)
 
-FastAPI backend for order management and file delivery tracking.
+FastAPI 后端，负责订单管理平台一期核心能力：
+- 订单全生命周期状态管理（严格状态机 + 管理员 override）
+- 时间线事件记录
+- 服务端 Webhook / Agent API（`X-Service-Key`）
+- 管理看板、批量操作、通知中心
+- 客户端可视化接口（时间线、需求确认、反馈、沟通摘要）
 
-## Features
-
-- ✅ **Admin Authentication**: JWT-based authentication for administrators
-- ✅ **Order Management**: Create, read, update, delete orders with unique access keys
-- ✅ **File Upload/Download**: Secure file handling with UUID-based storage
-- ✅ **Access Logging**: Track all client visits and downloads for evidence
-- ✅ **Client Portal**: Hash-based URLs for clients to view orders and download files
-- ✅ **SQLite Database**: Lightweight async database with SQLAlchemy
-
-## Tech Stack
-
-- **FastAPI** - Modern async web framework
-- **SQLAlchemy 2.0** - Async ORM
-- **SQLite + aiosqlite** - Async database
-- **Pydantic** - Data validation
-- **JWT** - Authentication tokens
-- **Uvicorn** - ASGI server
-
-## Quick Start
-
-### 1. Install Dependencies
-
+## 运行
 ```bash
 cd backend
 pip install -r requirements.txt
-```
-
-### 2. Configure Environment
-
-Edit `.env` file:
-```env
-SECRET_KEY=your-secret-key-here
-UPLOAD_DIR=/absolute/path/to/upload_storage
-```
-
-### 3. Run the Server
-
-```bash
 python main.py
 ```
 
-API will be available at: http://localhost:8000
-
-Documentation: http://localhost:8000/docs
-
-### 4. Create First Admin User
-
-Run a Python script to create admin:
-
-```python
-import asyncio
-from sqlalchemy.ext.asyncio import AsyncSession
-from app.db.session import AsyncSessionLocal
-from app.models.admin import Admin
-from app.core.security import get_password_hash
-
-async def create_admin():
-    async with AsyncSessionLocal() as db:
-        admin = Admin(
-            username="admin",
-            hashed_password=get_password_hash("admin123")
-        )
-        db.add(admin)
-        await db.commit()
-        print("Admin created successfully!")
-
-asyncio.run(create_admin())
-```
-
-## Docker Deployment
-
-### Build and Run
-
+## 数据库
+- 默认数据库：`backend/data/database/app.db`
+- 重建基线：
 ```bash
-docker-compose up -d
+python -m migrations.reset_sqlite
 ```
 
-### View Logs
+## 主要接口
 
-```bash
-docker-compose logs -f
-```
+### 管理端
+- `GET /api/v1/orders`
+- `POST /api/v1/orders`
+- `PATCH /api/v1/orders/{id}`
+- `POST /api/v1/orders/{id}/status`
+- `POST /api/v1/orders/{id}/status/override`
+- `GET /api/v1/orders/{id}/timeline`
+- `GET /api/v1/orders/{id}/full`
+- `GET /api/v1/dashboard/metrics`
+- `POST /api/v1/dashboard/batch`
+- `GET /api/v1/notifications`
 
-### Stop
+### 服务端（需 `X-Service-Key`）
+- `POST /api/v1/webhook/xianyu-message`
+- `POST /api/v1/webhook/agent-update`
+- `POST /api/v1/webhook/codex-progress`
+- `POST /api/v1/webhook/codex-result`
+- `POST /api/v1/agent/orders`
+- `PATCH /api/v1/agent/orders/{id}`
+- `POST /api/v1/agent/orders/{id}/files`
+- `POST /api/v1/agent/orders/{id}/timeline`
 
-```bash
-docker-compose down
-```
+### 客户端
+- `GET /api/v1/client/{access_key}/info`
+- `GET /api/v1/client/{access_key}/files`
+- `GET /api/v1/client/{access_key}/timeline`
+- `POST /api/v1/client/{access_key}/requirements/confirm`
+- `POST /api/v1/client/{access_key}/requirements/feedback`
+- `GET /api/v1/client/{access_key}/conversation-summary`
 
-## API Endpoints
-
-### Authentication
-- `POST /api/v1/auth/login` - Admin login
-
-### Admin - Orders
-- `GET /api/v1/admin/orders` - List all orders
-- `POST /api/v1/admin/orders` - Create new order
-- `GET /api/v1/admin/orders/{order_id}` - Get order details
-- `GET /api/v1/admin/orders/{order_id}/logs` - Get access logs (evidence)
-- `DELETE /api/v1/admin/orders/{order_id}` - Delete order
-
-### Client
-- `GET /api/v1/client/{access_key}/info` - Get order info
-- `GET /api/v1/client/{access_key}/files` - List files
-
-### Files
-- `POST /api/v1/files/upload` - Upload file (admin)
-- `GET /api/v1/files/download/{file_id}` - Download file
-- `DELETE /api/v1/files/{file_id}` - Delete file (admin)
-
-## Database Schema
-
-### Tables
-- **admins** - Admin users
-- **orders** - Client orders with access keys
-- **files** - Uploaded files metadata
-- **access_logs** - IP/download tracking for evidence
-
-## Security Features
-
-- JWT token authentication for admins
-- Hash-based access keys for clients (12 characters)
-- Password hashing with bcrypt
-- File type validation
-- UUID-based file storage
-- IP address logging
-- User agent tracking
-
-## Project Structure
-
-```
-backend/
-├── app/
-│   ├── api/
-│   │   └── v1/
-│   │       ├── endpoints/     # API routes
-│   │       └── api.py         # Route aggregation
-│   ├── core/                  # Config & security
-│   ├── db/                    # Database session
-│   ├── models/                # SQLAlchemy models
-│   ├── schemas/               # Pydantic schemas
-│   └── main.py                # FastAPI app
-├── upload_storage/            # File storage
-├── requirements.txt
-├── Dockerfile
-└── docker-compose.yml
-```
-
-## License
-
-MIT
+## Mock 联调
+- 文档：`backend/MOCK_INTEGRATION.md`
+- 脚本：`backend/scripts/mock_webhook_flow.py`
