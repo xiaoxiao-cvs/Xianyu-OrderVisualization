@@ -5,21 +5,30 @@ from sqlalchemy import select, func
 import uuid
 from pathlib import Path
 from typing import Optional
+from pydantic import BaseModel
 from app.db.session import get_db
-from app.core.config import settings, oss_settings
+from app.core.config import settings
 from app.core.deps import get_order_by_hash, get_client_ip, get_user_agent
 from app.models.order import Order, OrderStatus
 from app.models.file import File, FileType
 from app.models.log import AccessLog
+from app.models.timeline import OrderTimeline, TimelineActor, TimelineEventType
+from app.core.status_machine import apply_status_transition
 from app.schemas.order import OrderResponse
+from app.schemas.timeline import TimelineListResponse
 from app.schemas.file import (
     FileListResponse, FileResponse, 
     OSSSignatureResponse, OSSCallbackRequest,
     FileHashCheckRequest, FileHashCheckResponse
 )
 from app.utils.oss import oss_client
+from app.utils.notification import create_notification
 
 router = APIRouter()
+
+
+class RequirementFeedbackRequest(BaseModel):
+    content: str
 
 
 async def log_access(
@@ -89,6 +98,109 @@ async def get_order_files(
     files = result.scalars().all()
     
     return {"files": files}
+
+
+@router.get("/{access_key}/timeline", response_model=TimelineListResponse)
+async def get_order_timeline(
+    access_key: str,
+    db: AsyncSession = Depends(get_db),
+    order: Order = Depends(get_order_by_hash)
+):
+    result = await db.execute(
+        select(OrderTimeline)
+        .where(OrderTimeline.order_id == order.id)
+        .order_by(OrderTimeline.created_at.desc())
+    )
+    items = result.scalars().all()
+    return {"total": len(items), "items": items}
+
+
+@router.post("/{access_key}/requirements/confirm")
+async def confirm_requirements(
+    access_key: str,
+    db: AsyncSession = Depends(get_db),
+    order: Order = Depends(get_order_by_hash)
+):
+    previous = order.status
+    apply_status_transition(order, OrderStatus.confirmed, override=True)
+    db.add(
+        OrderTimeline(
+            order_id=order.id,
+            event_type=TimelineEventType.status_change,
+            actor=TimelineActor.customer,
+            event_data={"from": previous.value, "to": order.status.value, "action": "requirement_confirm"},
+        )
+    )
+    await create_notification(
+        db,
+        order_id=order.id,
+        type="requirement_confirmed",
+        title="客户已确认需求",
+        content=f"订单 #{order.id} 客户确认需求",
+    )
+    await db.commit()
+    return {"status": "ok"}
+
+
+@router.post("/{access_key}/requirements/feedback")
+async def submit_requirement_feedback(
+    access_key: str,
+    payload: RequirementFeedbackRequest,
+    db: AsyncSession = Depends(get_db),
+    order: Order = Depends(get_order_by_hash)
+):
+    previous = order.status
+    apply_status_transition(order, OrderStatus.collecting, override=True)
+    db.add(
+        OrderTimeline(
+            order_id=order.id,
+            event_type=TimelineEventType.note,
+            actor=TimelineActor.customer,
+            event_data={"feedback": payload.content, "from": previous.value, "to": order.status.value},
+        )
+    )
+    await create_notification(
+        db,
+        order_id=order.id,
+        type="requirement_feedback",
+        title="客户提交需求反馈",
+        content=payload.content[:120],
+    )
+    await db.commit()
+    return {"status": "ok"}
+
+
+@router.get("/{access_key}/conversation-summary")
+async def get_conversation_summary(
+    access_key: str,
+    db: AsyncSession = Depends(get_db),
+    order: Order = Depends(get_order_by_hash)
+):
+    events = (
+        await db.execute(
+            select(OrderTimeline)
+            .where(OrderTimeline.order_id == order.id, OrderTimeline.event_type.in_([TimelineEventType.message, TimelineEventType.note]))
+            .order_by(OrderTimeline.created_at.desc())
+            .limit(20)
+        )
+    ).scalars().all()
+
+    highlights = []
+    for event in events:
+        feedback = (event.event_data or {}).get("feedback")
+        if isinstance(feedback, str) and feedback.strip():
+            highlights.append(feedback.strip())
+        message = (event.event_data or {}).get("message")
+        if isinstance(message, str) and message.strip():
+            highlights.append(message.strip())
+
+    if not highlights:
+        req_summary = (order.requirements or {}).get("summary") if isinstance(order.requirements, dict) else None
+        if req_summary:
+            highlights = [req_summary]
+
+    summary = highlights[0] if highlights else "暂无可用沟通摘要"
+    return {"summary": summary, "highlights": highlights[:5]}
 
 
 @router.post("/{access_key}/upload", response_model=FileResponse, status_code=status.HTTP_201_CREATED)
