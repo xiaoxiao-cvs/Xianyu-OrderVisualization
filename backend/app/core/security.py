@@ -1,4 +1,5 @@
 from datetime import datetime, timedelta
+import hashlib
 from typing import Optional
 from jose import JWTError, jwt
 from passlib.context import CryptContext
@@ -39,3 +40,8 @@ def decode_access_token(token: str) -> Optional[str]:
         return username
     except JWTError:
         return None
+
+
+def hash_service_key(raw_key: str) -> str:
+    """Hash service key for at-rest storage."""
+    return hashlib.sha256(raw_key.encode("utf-8")).hexdigest()
