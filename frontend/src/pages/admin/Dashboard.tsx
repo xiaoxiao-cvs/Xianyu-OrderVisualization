@@ -223,6 +223,9 @@ export default function AdminDashboard() {
               <RefreshCcw className="h-4 w-4" />
               刷新
             </Button>
+            <Button variant="outline" onClick={() => navigate('/admin/notifications')}>
+              通知中心
+            </Button>
             <Button onClick={handleCreateOrder}>新建订单</Button>
             <Button
               variant="outline"
