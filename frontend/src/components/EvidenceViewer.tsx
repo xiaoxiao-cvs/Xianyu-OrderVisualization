@@ -148,18 +148,18 @@ export default function EvidenceViewer({ open, onOpenChange, order, logs }: Evid
                           <div className="flex items-center gap-2 mb-2">
                             <Clock className="w-4 h-4 text-muted-foreground" />
                             <span className="text-sm font-medium text-foreground">
-                              {format(new Date(log.createdAt), 'yyyy-MM-dd HH:mm:ss', { locale: zhCN })}
+                              {format(new Date(log.timestamp), 'yyyy-MM-dd HH:mm:ss', { locale: zhCN })}
                             </span>
                           </div>
-                          <p className="font-medium text-foreground mb-3">{log.action}</p>
+                          <p className="font-medium text-foreground mb-3">{log.action_type}</p>
                           <div className="space-y-2 text-sm">
                             <div className="flex items-center gap-2 text-muted-foreground">
                               <Globe className="w-3.5 h-3.5" />
-                              <span>IP: {log.ip}</span>
+                              <span>IP: {log.ip_address}</span>
                             </div>
                             <div className="flex items-start gap-2 text-muted-foreground">
                               <Monitor className="w-3.5 h-3.5 mt-0.5 shrink-0" />
-                              <span className="break-all text-xs">{log.userAgent}</span>
+                              <span className="break-all text-xs">{log.user_agent}</span>
                             </div>
                           </div>
                         </div>

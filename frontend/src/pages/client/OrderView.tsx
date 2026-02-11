@@ -26,25 +26,26 @@ import { cn } from '@/lib/utils'
 
 // 状态 Tag 组件
 function StatusTag({ status }: { status: Order['status'] }) {
-  const config = {
-    pending: {
-      label: '编辑中',
-      icon: Edit3,
-      className: 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400',
-    },
-    processing: {
-      label: '处理中',
-      icon: Clock,
-      className: 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400',
-    },
-    delivered: {
-      label: '已发货',
-      icon: Truck,
-      className: 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400',
-    },
+  const config: Record<Order['status'], { label: string; icon: typeof Edit3; className: string }> = {
+    draft: { label: '草稿', icon: Edit3, className: 'bg-slate-100 text-slate-700 dark:bg-slate-900/30 dark:text-slate-300' },
+    collecting: { label: '需求收集中', icon: Clock, className: 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400' },
+    collected: { label: '需求已收集', icon: Clock, className: 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-300' },
+    quoted: { label: '已报价', icon: Clock, className: 'bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-300' },
+    confirmed: { label: '已确认', icon: CheckCircle2, className: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300' },
+    repo_created: { label: '仓库已创建', icon: Package, className: 'bg-cyan-100 text-cyan-700 dark:bg-cyan-900/30 dark:text-cyan-300' },
+    coding: { label: '编码中', icon: Clock, className: 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400' },
+    testing: { label: '测试中', icon: Clock, className: 'bg-indigo-100 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-300' },
+    code_review: { label: '待审核', icon: Clock, className: 'bg-violet-100 text-violet-700 dark:bg-violet-900/30 dark:text-violet-300' },
+    revision: { label: '修改中', icon: Edit3, className: 'bg-fuchsia-100 text-fuchsia-700 dark:bg-fuchsia-900/30 dark:text-fuchsia-300' },
+    ready: { label: '待发货', icon: Truck, className: 'bg-lime-100 text-lime-700 dark:bg-lime-900/30 dark:text-lime-300' },
+    delivered: { label: '已发货', icon: Truck, className: 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400' },
+    accepted: { label: '客户已确认', icon: CheckCircle2, className: 'bg-teal-100 text-teal-700 dark:bg-teal-900/30 dark:text-teal-300' },
+    disputed: { label: '争议中', icon: AlertCircle, className: 'bg-rose-100 text-rose-700 dark:bg-rose-900/30 dark:text-rose-300' },
+    cancelled: { label: '已取消', icon: AlertCircle, className: 'bg-zinc-100 text-zinc-700 dark:bg-zinc-900/30 dark:text-zinc-300' },
+    expired: { label: '已过期', icon: AlertCircle, className: 'bg-neutral-100 text-neutral-700 dark:bg-neutral-900/30 dark:text-neutral-300' },
   }
 
-  const { label, icon: Icon, className } = config[status] || config.pending
+  const { label, icon: Icon, className } = config[status]
 
   return (
     <span
@@ -88,8 +89,8 @@ function FileCard({
           <FileText className="w-5 h-5 text-primary" />
         </div>
         <div>
-          <p className="font-medium text-foreground text-sm">{file.fileName}</p>
-          <p className="text-xs text-muted-foreground">{formatFileSize(file.fileSize)}</p>
+          <p className="font-medium text-foreground text-sm">{file.filename_original}</p>
+          <p className="text-xs text-muted-foreground">{formatFileSize(file.file_size)}</p>
         </div>
       </div>
       <button
@@ -208,7 +209,7 @@ export default function OrderView() {
           orderApi.getFilesByHash(hash),
         ])
         setOrder(orderRes.data)
-        setFiles(filesRes.data)
+        setFiles(filesRes.data.files)
       } catch {
         setError('订单不存在或链接已失效')
       } finally {
@@ -238,12 +239,12 @@ export default function OrderView() {
     setUploadProgress(0)
 
     try {
-      await fileApi.upload(order.id, file, 'requirement', (percent) => {
+      await fileApi.upload(order.access_key, 'req', file, (percent) => {
         setUploadProgress(percent)
       })
       addToast({ title: '文件上传成功', variant: 'success' })
       const filesRes = await orderApi.getFilesByHash(hash!)
-      setFiles(filesRes.data)
+      setFiles(filesRes.data.files)
     } catch {
       addToast({ title: '上传失败', variant: 'error' })
     } finally {
@@ -297,8 +298,8 @@ export default function OrderView() {
     )
   }
 
-  const requirementFiles = files.filter((f) => f.fileType === 'requirement')
-  const deliveryFiles = files.filter((f) => f.fileType === 'delivery')
+  const requirementFiles = files.filter((f) => f.file_type === 'req')
+  const deliveryFiles = files.filter((f) => f.file_type === 'delivery' || f.file_type === 'source')
 
   return (
     <div className="min-h-screen bg-background">

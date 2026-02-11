@@ -27,22 +27,26 @@ import { cn } from '@/lib/utils'
 
 // 状态徽章组件
 function StatusBadge({ status }: { status: Order['status'] }) {
-  const config = {
-    pending: {
-      label: '🔴 待上传',
-      className: 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400',
-    },
-    processing: {
-      label: '🟡 处理中',
-      className: 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400',
-    },
-    delivered: {
-      label: '🟢 已发货',
-      className: 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400',
-    },
+  const config: Record<Order['status'], { label: string; className: string }> = {
+    draft: { label: '草稿', className: 'bg-slate-100 text-slate-700 dark:bg-slate-900/30 dark:text-slate-300' },
+    collecting: { label: '需求收集中', className: 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400' },
+    collected: { label: '需求已收集', className: 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-300' },
+    quoted: { label: '已报价', className: 'bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-300' },
+    confirmed: { label: '已确认', className: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300' },
+    repo_created: { label: '仓库已创建', className: 'bg-cyan-100 text-cyan-700 dark:bg-cyan-900/30 dark:text-cyan-300' },
+    coding: { label: '编码中', className: 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300' },
+    testing: { label: '测试中', className: 'bg-indigo-100 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-300' },
+    code_review: { label: '待审核', className: 'bg-violet-100 text-violet-700 dark:bg-violet-900/30 dark:text-violet-300' },
+    revision: { label: '修改中', className: 'bg-fuchsia-100 text-fuchsia-700 dark:bg-fuchsia-900/30 dark:text-fuchsia-300' },
+    ready: { label: '待发货', className: 'bg-lime-100 text-lime-700 dark:bg-lime-900/30 dark:text-lime-300' },
+    delivered: { label: '已发货', className: 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400' },
+    accepted: { label: '客户已确认', className: 'bg-teal-100 text-teal-700 dark:bg-teal-900/30 dark:text-teal-300' },
+    disputed: { label: '争议中', className: 'bg-rose-100 text-rose-700 dark:bg-rose-900/30 dark:text-rose-300' },
+    cancelled: { label: '已取消', className: 'bg-zinc-100 text-zinc-700 dark:bg-zinc-900/30 dark:text-zinc-300' },
+    expired: { label: '已过期', className: 'bg-neutral-100 text-neutral-700 dark:bg-neutral-900/30 dark:text-neutral-300' },
   }
 
-  const { label, className } = config[status] || config.pending
+  const { label, className } = config[status]
 
   return (
     <span className={cn('px-2.5 py-1 rounded-lg text-xs font-medium', className)}>
@@ -310,7 +314,7 @@ export default function AdminDashboard() {
     setSelectedOrder(order)
     try {
       const response = await orderApi.getLogs(order.id)
-      setLogs(response.data)
+      setLogs(response.data.logs)
       setEvidenceViewerOpen(true)
     } catch {
       addToast({ title: '加载日志失败', variant: 'error' })
