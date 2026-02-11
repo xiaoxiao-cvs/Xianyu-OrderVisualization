@@ -10,3 +10,4 @@ from app.models.order import (
 )
 from app.models.timeline import OrderTimeline, TimelineActor, TimelineEventType
 from app.models.service_api_key import ServiceApiKey
+from app.models.webhook_event import WebhookEvent
