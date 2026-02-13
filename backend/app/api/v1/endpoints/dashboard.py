@@ -146,6 +146,37 @@ async def batch_action(
     return {"success_count": success_count, "failed_ids": failed_ids}
 
 
+@router.get("/recent-activity")
+async def get_recent_activity(
+    limit: int = 20,
+    db: AsyncSession = Depends(get_db),
+    _: bool = Depends(get_current_admin),
+):
+    """获取全局最近的时间线事件（系统日志），用于右侧活动面板"""
+    rows = (
+        await db.execute(
+            select(OrderTimeline)
+            .order_by(OrderTimeline.created_at.desc())
+            .limit(limit)
+        )
+    ).scalars().all()
+
+    items = []
+    for row in rows:
+        # fetch order client_name for context
+        order = (await db.execute(select(Order.client_name, Order.id).where(Order.id == row.order_id))).first()
+        items.append({
+            "id": row.id,
+            "order_id": row.order_id,
+            "order_name": order[0] if order else f"#{row.order_id}",
+            "event_type": row.event_type.value if hasattr(row.event_type, 'value') else str(row.event_type),
+            "event_data": row.event_data,
+            "actor": row.actor.value if hasattr(row.actor, 'value') else str(row.actor),
+            "created_at": row.created_at.isoformat() if row.created_at else None,
+        })
+    return {"items": items}
+
+
 @router.get("/xianyu-accounts", response_model=list[XianyuAccountResponse])
 async def list_xianyu_accounts(
     db: AsyncSession = Depends(get_db),
