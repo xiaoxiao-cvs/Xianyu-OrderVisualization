@@ -6,7 +6,7 @@ import uuid
 from pathlib import Path
 from typing import Optional
 from pydantic import BaseModel
-from app.db.session import get_db
+from app.db.session import get_db, AsyncSessionLocal
 from app.core.config import settings
 from app.core.deps import get_order_by_hash, get_client_ip, get_user_agent
 from app.models.order import Order, OrderStatus
@@ -32,23 +32,23 @@ class RequirementFeedbackRequest(BaseModel):
 
 
 async def log_access(
-    db: AsyncSession,
     order_id: int,
     ip_address: str,
     user_agent: str,
     action_type: str,
     target_file: str = None
 ):
-    """Background task to log access"""
-    log = AccessLog(
-        order_id=order_id,
-        ip_address=ip_address,
-        user_agent=user_agent,
-        action_type=action_type,
-        target_file=target_file
-    )
-    db.add(log)
-    await db.commit()
+    """Background task to log access — uses its own session to avoid closed-session errors."""
+    async with AsyncSessionLocal() as db:
+        log = AccessLog(
+            order_id=order_id,
+            ip_address=ip_address,
+            user_agent=user_agent,
+            action_type=action_type,
+            target_file=target_file
+        )
+        db.add(log)
+        await db.commit()
 
 
 @router.get("/{access_key}/info", response_model=OrderResponse)
@@ -69,7 +69,6 @@ async def get_order_info(
     
     background_tasks.add_task(
         log_access,
-        db=db,
         order_id=order.id,
         ip_address=ip,
         user_agent=ua,
@@ -279,7 +278,6 @@ async def client_upload_file(
     ua = get_user_agent(request)
     background_tasks.add_task(
         log_access,
-        db=db,
         order_id=order.id,
         ip_address=ip,
         user_agent=ua,

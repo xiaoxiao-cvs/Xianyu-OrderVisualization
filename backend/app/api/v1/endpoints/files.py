@@ -6,7 +6,7 @@ import uuid
 import os
 from pathlib import Path
 from typing import Optional
-from app.db.session import get_db
+from app.db.session import get_db, AsyncSessionLocal
 from app.core.config import settings
 from app.core.deps import get_current_admin, get_order_by_hash, get_client_ip, get_user_agent
 from app.models.order import Order
@@ -19,22 +19,22 @@ router = APIRouter()
 
 
 async def log_download(
-    db: AsyncSession,
     order_id: int,
     ip_address: str,
     user_agent: str,
     filename: str
 ):
-    """Background task to log file download"""
-    log = AccessLog(
-        order_id=order_id,
-        ip_address=ip_address,
-        user_agent=user_agent,
-        action_type="DOWNLOAD_SUCCESS",
-        target_file=filename
-    )
-    db.add(log)
-    await db.commit()
+    """Background task to log file download — uses its own session."""
+    async with AsyncSessionLocal() as db:
+        log = AccessLog(
+            order_id=order_id,
+            ip_address=ip_address,
+            user_agent=user_agent,
+            action_type="DOWNLOAD_SUCCESS",
+            target_file=filename
+        )
+        db.add(log)
+        await db.commit()
 
 
 @router.post("/upload", response_model=FileResponse, status_code=status.HTTP_201_CREATED)
@@ -150,7 +150,6 @@ async def download_file(
         ua = get_user_agent(request)
         background_tasks.add_task(
             log_download,
-            db=db,
             order_id=order.id,
             ip_address=ip,
             user_agent=ua,
