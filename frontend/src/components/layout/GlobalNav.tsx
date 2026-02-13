@@ -7,6 +7,7 @@ import {
   Plus,
   Search,
   MessageCircle,
+  PanelLeft,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import {
@@ -14,19 +15,30 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@/components/ui/tooltip"
+import { useSidebar } from "@/hooks/use-sidebar"
 
 export function GlobalNav() {
+  const { toggle } = useSidebar()
+
   return (
     <header className="sticky top-0 z-50 w-full border-b border-[#30363d] bg-[#010409]">
       <div className="flex h-16 items-center justify-between px-4 lg:px-6">
         {/* Left section */}
         <div className="flex items-center gap-3">
-          {/* Hamburger */}
-          <Button variant="ghost" size="icon" className="text-white hover:bg-[#21262d] lg:hidden">
-            <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
-              <path d="M1 2.75A.75.75 0 0 1 1.75 2h12.5a.75.75 0 0 1 0 1.5H1.75A.75.75 0 0 1 1 2.75Zm0 5A.75.75 0 0 1 1.75 7h12.5a.75.75 0 0 1 0 1.5H1.75A.75.75 0 0 1 1 7.75ZM1.75 12h12.5a.75.75 0 0 1 0 1.5H1.75a.75.75 0 0 1 0-1.5Z" />
-            </svg>
-          </Button>
+          {/* Sidebar Toggle */}
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="text-white hover:bg-[#21262d]"
+                onClick={toggle}
+              >
+                <PanelLeft className="h-4 w-4" />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>Toggle sidebar</TooltipContent>
+          </Tooltip>
 
           {/* GitHub Logo */}
           <a href="/" className="text-white hover:text-[#c9d1d9]">
@@ -36,7 +48,7 @@ export function GlobalNav() {
           </a>
 
           {/* Dashboard breadcrumb */}
-          <nav className="hidden items-center gap-1 lg:flex">
+          <nav className="flex items-center gap-1">
             <a
               href="/"
               className="text-sm font-semibold text-white hover:text-[#c9d1d9]"

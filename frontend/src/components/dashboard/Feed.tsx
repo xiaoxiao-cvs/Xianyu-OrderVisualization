@@ -1,82 +1,144 @@
-import { MoreHorizontal, Star, BookMarked } from "lucide-react"
+import { MoreHorizontal, Star, BookMarked, RefreshCw } from "lucide-react"
 import { Button } from "@/components/ui/button"
-import {
-  feedItems,
-  trendingRepos,
-  popularRepos,
-  formatStars,
-  type Repository,
-  type FeedItem,
-} from "@/lib/data"
+import { formatStars, type Repository, type FeedItem } from "@/lib/data"
+import { useFeed } from "@/hooks/use-feed"
 
 export function Feed() {
+  const { data, isLoading, error, refresh } = useFeed()
+  const { feedItems, trendingRepos, popularRepos } = data
+
+  if (error) {
+    return (
+      <div className="flex flex-col items-center gap-3 rounded-lg border border-red-500/30 bg-red-500/5 p-8 text-center">
+        <p className="text-sm text-red-400">Failed to load feed: {error}</p>
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={refresh}
+          className="gap-1 border-[#30363d] text-xs text-[#e6edf3]"
+        >
+          <RefreshCw className="h-3.5 w-3.5" />
+          Retry
+        </Button>
+      </div>
+    )
+  }
+
+  if (isLoading) {
+    return <FeedSkeleton />
+  }
+
+  // 把 feedItems 按类型分组渲染
+  const followItems = feedItems.filter((item) => item.type === "follow")
+  const starItems = feedItems.filter((item) => item.type === "star")
+
   return (
     <div className="flex flex-col gap-4">
       {/* Feed Header */}
       <div className="flex items-center justify-between">
         <h2 className="text-base font-semibold text-[#e6edf3]">Feed</h2>
-        <Button
-          variant="ghost"
-          size="sm"
-          className="h-7 gap-1 rounded-md border border-[#30363d] bg-[#21262d] px-3 text-xs text-[#e6edf3] hover:bg-[#30363d]"
-        >
-          Filter
-          <svg className="h-4 w-4" viewBox="0 0 16 16" fill="currentColor">
-            <path d="M4.427 7.427l3.396 3.396a.25.25 0 00.354 0l3.396-3.396A.25.25 0 0011.396 7H4.604a.25.25 0 00-.177.427z" />
-          </svg>
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={refresh}
+            className="h-7 w-7 text-[#7d8590] hover:bg-[#21262d] hover:text-[#e6edf3]"
+            title="Refresh feed"
+          >
+            <RefreshCw className="h-3.5 w-3.5" />
+          </Button>
+          <Button
+            variant="ghost"
+            size="sm"
+            className="h-7 gap-1 rounded-md border border-[#30363d] bg-[#21262d] px-3 text-xs text-[#e6edf3] hover:bg-[#30363d]"
+          >
+            Filter
+            <svg className="h-4 w-4" viewBox="0 0 16 16" fill="currentColor">
+              <path d="M4.427 7.427l3.396 3.396a.25.25 0 00.354 0l3.396-3.396A.25.25 0 0011.396 7H4.604a.25.25 0 00-.177.427z" />
+            </svg>
+          </Button>
+        </div>
       </div>
 
-      {/* Feed Item - Follow (sicusa) */}
-      <div className="rounded-lg border border-[#30363d] p-4">
-        <FollowFeedItem item={feedItems[0]} />
-      </div>
+      {/* Follow items (first one) */}
+      {followItems[0] && (
+        <div className="rounded-lg border border-[#30363d] p-4">
+          <FollowFeedItem item={followItems[0]} />
+        </div>
+      )}
 
-      {/* Feed Item - Star */}
-      <div className="rounded-lg border border-[#30363d] p-4">
-        <StarFeedItem item={feedItems[1]} />
-      </div>
+      {/* Star items */}
+      {starItems.map((item) => (
+        <div key={item.id} className="rounded-lg border border-[#30363d] p-4">
+          <StarFeedItem item={item} />
+        </div>
+      ))}
 
       {/* Trending Repositories */}
-      <div className="rounded-lg border border-[#30363d]">
-        <div className="flex items-center gap-2 border-b border-[#30363d] px-4 py-3">
-          <h3 className="text-sm font-semibold text-[#e6edf3]">
-            Trending repositories
-          </h3>
-          <span className="text-[#7d8590]">·</span>
-          <a href="#" className="text-xs text-[#7d8590] hover:text-[#2f81f7]">
-            See more
-          </a>
+      {trendingRepos.length > 0 && (
+        <div className="rounded-lg border border-[#30363d]">
+          <div className="flex items-center gap-2 border-b border-[#30363d] px-4 py-3">
+            <h3 className="text-sm font-semibold text-[#e6edf3]">
+              Trending repositories
+            </h3>
+            <span className="text-[#7d8590]">·</span>
+            <a href="#" className="text-xs text-[#7d8590] hover:text-[#2f81f7]">
+              See more
+            </a>
+          </div>
+          {trendingRepos.map((repo) => (
+            <RepoCard key={repo.id} repo={repo} />
+          ))}
         </div>
-        {trendingRepos.map((repo) => (
-          <RepoCard key={repo.id} repo={repo} />
-        ))}
-      </div>
+      )}
 
       {/* Popular projects */}
-      <div className="rounded-lg border border-[#30363d]">
-        <div className="border-b border-[#30363d] px-4 py-3">
-          <span className="text-xs text-[#7d8590]">
-            Popular projects among{" "}
-            <a href="#" className="text-[#2f81f7] hover:underline">
-              people you follow
-            </a>
-          </span>
+      {popularRepos.length > 0 && (
+        <div className="rounded-lg border border-[#30363d]">
+          <div className="border-b border-[#30363d] px-4 py-3">
+            <span className="text-xs text-[#7d8590]">
+              Popular projects among{" "}
+              <a href="#" className="text-[#2f81f7] hover:underline">
+                people you follow
+              </a>
+            </span>
+          </div>
+          {popularRepos.map((repo) => (
+            <RepoCard key={repo.id} repo={repo} />
+          ))}
         </div>
-        {popularRepos.map((repo) => (
-          <RepoCard key={repo.id} repo={repo} />
-        ))}
-      </div>
+      )}
 
-      {/* Feed Item - Follow (lei6622) */}
-      <div className="rounded-lg border border-[#30363d] p-4">
-        <FollowFeedItem item={feedItems[2]} />
-      </div>
+      {/* Remaining follow items */}
+      {followItems.slice(1).map((item) => (
+        <div key={item.id} className="rounded-lg border border-[#30363d] p-4">
+          <FollowFeedItem item={item} />
+        </div>
+      ))}
+    </div>
+  )
+}
 
-      {/* Feed Item - Follow (weakdreamer) */}
-      <div className="rounded-lg border border-[#30363d] p-4">
-        <FollowFeedItem item={feedItems[3]} />
+// --- Skeleton ---
+
+function FeedSkeleton() {
+  return (
+    <div className="flex flex-col gap-4 animate-pulse">
+      <div className="flex items-center justify-between">
+        <div className="h-5 w-16 rounded bg-[#21262d]" />
+        <div className="h-7 w-16 rounded bg-[#21262d]" />
       </div>
+      {[1, 2, 3].map((i) => (
+        <div key={i} className="rounded-lg border border-[#30363d] p-4">
+          <div className="flex items-start gap-3">
+            <div className="h-8 w-8 rounded-full bg-[#21262d]" />
+            <div className="flex-1 space-y-2">
+              <div className="h-4 w-48 rounded bg-[#21262d]" />
+              <div className="h-3 w-24 rounded bg-[#21262d]" />
+            </div>
+          </div>
+        </div>
+      ))}
     </div>
   )
 }
