@@ -1,7 +1,7 @@
 import { Plus } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { topRepositories, userProfile } from "@/lib/data"
+import { feedItems, userProfile, ORDER_STATUS_MAP } from "@/lib/data"
 
 export function LeftSidebar() {
   return (
@@ -26,11 +26,11 @@ export function LeftSidebar() {
           </button>
         </div>
 
-        {/* Repositories Section */}
+        {/* Orders Section */}
         <div>
           <div className="flex items-center justify-between">
             <h2 className="text-xs font-semibold text-[#e6edf3]">
-              Top repositories
+              我的订单
             </h2>
             <Button
               variant="ghost"
@@ -38,43 +38,47 @@ export function LeftSidebar() {
               className="h-7 gap-1 rounded-md border border-[#30363d] bg-[#21262d] px-3 text-xs font-medium text-[#e6edf3] hover:bg-[#30363d] hover:text-white"
             >
               <Plus className="h-3.5 w-3.5" />
-              New
+              新建
             </Button>
           </div>
 
           {/* Search */}
           <div className="mt-3">
             <Input
-              placeholder="Find a repository…"
+              placeholder="搜索订单…"
               className="h-[30px] border-[#30363d] bg-[#0d1117] text-xs text-[#e6edf3] placeholder:text-[#484f58] focus-visible:border-[#1f6feb] focus-visible:ring-0"
             />
           </div>
 
-          {/* Repository List */}
+          {/* Order List */}
           <nav className="mt-3 flex flex-col gap-0.5">
-            {topRepositories.map((repo) => (
-              <a
-                key={repo.id}
-                href="#"
-                className="flex items-center gap-2 rounded-md px-1 py-1.5 text-sm text-[#e6edf3] hover:bg-[#21262d]"
-              >
-                <img
-                  src={repo.avatarUrl}
-                  alt={repo.owner}
-                  className="h-4 w-4 rounded-full"
-                />
-                <span className="truncate">
-                  <span className="text-[#7d8590]">{repo.owner}</span>
-                  <span className="text-[#7d8590]">/</span>
-                  <span className="font-semibold">{repo.name}</span>
-                </span>
-              </a>
-            ))}
+            {feedItems.map((order) => {
+              const statusInfo = ORDER_STATUS_MAP[order.status]
+              return (
+                <a
+                  key={order.id}
+                  href="#"
+                  className="flex items-center gap-2 rounded-md px-1 py-1.5 text-sm text-[#e6edf3] hover:bg-[#21262d]"
+                >
+                  <img
+                    src={order.buyer.avatarUrl}
+                    alt={order.buyer.username}
+                    className="h-4 w-4 rounded-full"
+                  />
+                  <span className="truncate flex-1">
+                    <span className="font-semibold">{order.title}</span>
+                  </span>
+                  <span className={`text-[10px] shrink-0 ${statusInfo.color}`}>
+                    {statusInfo.label}
+                  </span>
+                </a>
+              )
+            })}
           </nav>
 
           {/* Show more */}
           <button className="mt-2 text-xs text-[#7d8590] hover:text-[#2f81f7]">
-            Show more
+            查看更多
           </button>
         </div>
       </div>

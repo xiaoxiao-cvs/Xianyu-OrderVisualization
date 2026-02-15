@@ -1,16 +1,20 @@
-import { MoreHorizontal, Star, BookMarked, RefreshCw } from "lucide-react"
+import { RefreshCw } from "lucide-react"
 import { Button } from "@/components/ui/button"
-import { formatStars, type Repository, type FeedItem } from "@/lib/data"
+import {
+  ORDER_STATUS_MAP,
+  formatPrice,
+  type FeedItem,
+} from "@/lib/data"
 import { useFeed } from "@/hooks/use-feed"
 
 export function Feed() {
   const { data, isLoading, error, refresh } = useFeed()
-  const { feedItems, trendingRepos, popularRepos } = data
+  const { feedItems } = data
 
   if (error) {
     return (
       <div className="flex flex-col items-center gap-3 rounded-lg border border-red-500/30 bg-red-500/5 p-8 text-center">
-        <p className="text-sm text-red-400">Failed to load feed: {error}</p>
+        <p className="text-sm text-red-400">加载失败: {error}</p>
         <Button
           variant="outline"
           size="sm"
@@ -18,7 +22,7 @@ export function Feed() {
           className="gap-1 border-[#30363d] text-xs text-[#e6edf3]"
         >
           <RefreshCw className="h-3.5 w-3.5" />
-          Retry
+          重试
         </Button>
       </div>
     )
@@ -28,92 +32,25 @@ export function Feed() {
     return <FeedSkeleton />
   }
 
-  // 把 feedItems 按类型分组渲染
-  const followItems = feedItems.filter((item) => item.type === "follow")
-  const starItems = feedItems.filter((item) => item.type === "star")
-
   return (
     <div className="flex flex-col gap-4">
       {/* Feed Header */}
       <div className="flex items-center justify-between">
-        <h2 className="text-base font-semibold text-[#e6edf3]">Feed</h2>
-        <div className="flex items-center gap-2">
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={refresh}
-            className="h-7 w-7 text-[#7d8590] hover:bg-[#21262d] hover:text-[#e6edf3]"
-            title="Refresh feed"
-          >
-            <RefreshCw className="h-3.5 w-3.5" />
-          </Button>
-          <Button
-            variant="ghost"
-            size="sm"
-            className="h-7 gap-1 rounded-md border border-[#30363d] bg-[#21262d] px-3 text-xs text-[#e6edf3] hover:bg-[#30363d]"
-          >
-            Filter
-            <svg className="h-4 w-4" viewBox="0 0 16 16" fill="currentColor">
-              <path d="M4.427 7.427l3.396 3.396a.25.25 0 00.354 0l3.396-3.396A.25.25 0 0011.396 7H4.604a.25.25 0 00-.177.427z" />
-            </svg>
-          </Button>
-        </div>
+        <h2 className="text-base font-semibold text-[#e6edf3]">订单动态</h2>
+        <Button
+          variant="ghost"
+          size="icon"
+          onClick={refresh}
+          className="h-7 w-7 text-[#7d8590] hover:bg-[#21262d] hover:text-[#e6edf3]"
+          title="刷新"
+        >
+          <RefreshCw className="h-3.5 w-3.5" />
+        </Button>
       </div>
 
-      {/* Follow items (first one) */}
-      {followItems[0] && (
-        <div className="rounded-lg border border-[#30363d] p-4">
-          <FollowFeedItem item={followItems[0]} />
-        </div>
-      )}
-
-      {/* Star items */}
-      {starItems.map((item) => (
-        <div key={item.id} className="rounded-lg border border-[#30363d] p-4">
-          <StarFeedItem item={item} />
-        </div>
-      ))}
-
-      {/* Trending Repositories */}
-      {trendingRepos.length > 0 && (
-        <div className="rounded-lg border border-[#30363d]">
-          <div className="flex items-center gap-2 border-b border-[#30363d] px-4 py-3">
-            <h3 className="text-sm font-semibold text-[#e6edf3]">
-              Trending repositories
-            </h3>
-            <span className="text-[#7d8590]">·</span>
-            <a href="#" className="text-xs text-[#7d8590] hover:text-[#2f81f7]">
-              See more
-            </a>
-          </div>
-          {trendingRepos.map((repo) => (
-            <RepoCard key={repo.id} repo={repo} />
-          ))}
-        </div>
-      )}
-
-      {/* Popular projects */}
-      {popularRepos.length > 0 && (
-        <div className="rounded-lg border border-[#30363d]">
-          <div className="border-b border-[#30363d] px-4 py-3">
-            <span className="text-xs text-[#7d8590]">
-              Popular projects among{" "}
-              <a href="#" className="text-[#2f81f7] hover:underline">
-                people you follow
-              </a>
-            </span>
-          </div>
-          {popularRepos.map((repo) => (
-            <RepoCard key={repo.id} repo={repo} />
-          ))}
-        </div>
-      )}
-
-      {/* Remaining follow items */}
-      {followItems.slice(1).map((item) => (
-        <div key={item.id} className="rounded-lg border border-[#30363d] p-4">
-          <FollowFeedItem item={item} />
-        </div>
+      {/* Order cards */}
+      {feedItems.map((item) => (
+        <OrderCard key={item.id} item={item} />
       ))}
     </div>
   )
@@ -125,16 +62,21 @@ function FeedSkeleton() {
   return (
     <div className="flex flex-col gap-4 animate-pulse">
       <div className="flex items-center justify-between">
-        <div className="h-5 w-16 rounded bg-[#21262d]" />
-        <div className="h-7 w-16 rounded bg-[#21262d]" />
+        <div className="h-5 w-20 rounded bg-[#21262d]" />
+        <div className="h-7 w-7 rounded bg-[#21262d]" />
       </div>
-      {[1, 2, 3].map((i) => (
+      {[1, 2].map((i) => (
         <div key={i} className="rounded-lg border border-[#30363d] p-4">
           <div className="flex items-start gap-3">
-            <div className="h-8 w-8 rounded-full bg-[#21262d]" />
+            <div className="h-10 w-10 rounded-full bg-[#21262d]" />
             <div className="flex-1 space-y-2">
-              <div className="h-4 w-48 rounded bg-[#21262d]" />
-              <div className="h-3 w-24 rounded bg-[#21262d]" />
+              <div className="h-4 w-32 rounded bg-[#21262d]" />
+              <div className="h-5 w-48 rounded bg-[#21262d]" />
+              <div className="h-3 w-full rounded bg-[#21262d]" />
+              <div className="flex gap-2">
+                <div className="h-5 w-14 rounded-full bg-[#21262d]" />
+                <div className="h-5 w-14 rounded-full bg-[#21262d]" />
+              </div>
             </div>
           </div>
         </div>
@@ -143,190 +85,63 @@ function FeedSkeleton() {
   )
 }
 
-// --- Sub Components ---
+// --- Order Card ---
 
-function FollowFeedItem({ item }: { item: FeedItem }) {
+function OrderCard({ item }: { item: FeedItem }) {
+  const statusInfo = ORDER_STATUS_MAP[item.status]
+
   return (
-    <div className="flex flex-col gap-3">
-      {/* Header */}
+    <div className="rounded-lg border border-[#30363d] p-4 transition-colors hover:border-[#484f58]">
+      {/* Buyer info */}
       <div className="flex items-start gap-3">
-        <a href="#">
-          <img
-            src={item.actor.avatarUrl}
-            alt={`@${item.actor.username}`}
-            className="h-8 w-8 rounded-full"
-          />
-        </a>
-        <div className="flex-1">
-          <div className="flex items-center justify-between">
-            <p className="text-sm text-[#e6edf3]">
-              <a href="#" className="font-semibold hover:text-[#2f81f7]">
-                {item.actor.username}
-              </a>{" "}
-              <span className="text-[#7d8590]">started following</span>{" "}
-              <span className="font-semibold">you</span>
-            </p>
-            <Button
-              variant="ghost"
-              size="icon"
-              className="h-7 w-7 text-[#7d8590] hover:bg-[#21262d] hover:text-[#e6edf3]"
-            >
-              <MoreHorizontal className="h-4 w-4" />
-            </Button>
-          </div>
-          <p className="text-xs text-[#7d8590]">{item.timestamp}</p>
-        </div>
-      </div>
-
-      {/* User card */}
-      <div className="ml-11 rounded-lg border border-[#30363d] p-4">
-        <div className="flex items-start gap-3">
-          <a href="#">
-            <img
-              src={item.actor.avatarUrl}
-              alt={`@${item.actor.username}`}
-              className="h-12 w-12 rounded-full"
-            />
-          </a>
-          <div className="flex-1 min-w-0">
-            <div className="flex items-start justify-between gap-2">
-              <div className="min-w-0">
-                <a href="#" className="text-sm font-semibold text-[#e6edf3] hover:text-[#2f81f7]">
-                  {item.actor.displayName || item.actor.username}
-                </a>
-                <span className="ml-1 text-xs text-[#7d8590]">
-                  {item.actor.username}
-                </span>
-                {item.actor.bio && (
-                  <p className="mt-1 text-xs text-[#7d8590] line-clamp-2">
-                    {item.actor.bio}
-                  </p>
-                )}
-                <div className="mt-2 flex items-center gap-3 text-xs text-[#7d8590]">
-                  {item.actor.repoCount !== undefined && (
-                    <span>{item.actor.repoCount} repositories</span>
-                  )}
-                  {item.actor.followerCount !== undefined && (
-                    <span>
-                      {item.actor.followerCount} follower{item.actor.followerCount !== 1 ? "s" : ""}
-                    </span>
-                  )}
-                </div>
-              </div>
-              <Button
-                variant="outline"
-                size="sm"
-                className="h-7 shrink-0 rounded-md border-[#30363d] bg-[#21262d] px-3 text-xs text-[#e6edf3] hover:border-[#8b949e] hover:bg-[#30363d]"
-              >
-                Follow
-              </Button>
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
-  )
-}
-
-function StarFeedItem({ item }: { item: FeedItem }) {
-  if (!item.repository) return null
-
-  return (
-    <div className="flex flex-col gap-3">
-      {/* Header */}
-      <div className="flex items-start gap-3">
-        <a href="#">
-          <img
-            src={item.actor.avatarUrl}
-            alt={`@${item.actor.username}`}
-            className="h-8 w-8 rounded-full"
-          />
-        </a>
-        <div className="flex-1">
-          <div className="flex items-center justify-between">
-            <p className="text-sm text-[#e6edf3]">
-              <a href="#" className="font-semibold hover:text-[#2f81f7]">
-                {item.actor.username}
-              </a>{" "}
-              <span className="text-[#7d8590]">starred</span>{" "}
-              <span className="font-semibold">your repository</span>
-            </p>
-            <Button
-              variant="ghost"
-              size="icon"
-              className="h-7 w-7 text-[#7d8590] hover:bg-[#21262d] hover:text-[#e6edf3]"
-            >
-              <MoreHorizontal className="h-4 w-4" />
-            </Button>
-          </div>
-          <p className="text-xs text-[#7d8590]">{item.timestamp}</p>
-        </div>
-      </div>
-
-      {/* Repo card */}
-      <div className="ml-11">
-        <RepoCard repo={item.repository} />
-      </div>
-    </div>
-  )
-}
-
-function RepoCard({ repo }: { repo: Repository }) {
-  return (
-    <div className="flex items-start justify-between gap-3 border-b border-[#30363d] p-4 last:border-b-0">
-      <div className="flex-1 min-w-0">
-        <div className="flex items-center gap-2">
-          <img
-            src={repo.avatarUrl}
-            alt={repo.owner}
-            className="h-5 w-5 rounded-full"
-          />
-          <a
-            href="#"
-            className="text-sm font-semibold text-[#2f81f7] hover:underline"
-          >
-            {repo.owner}/{repo.name}
-          </a>
-        </div>
-        {repo.description && (
-          <p className="mt-1 text-xs text-[#7d8590] line-clamp-2">
-            {repo.description}
-          </p>
-        )}
-        <div className="mt-2 flex items-center gap-3 text-xs text-[#7d8590]">
-          {repo.language && (
-            <span className="flex items-center gap-1">
-              <span
-                className="inline-block h-3 w-3 rounded-full"
-                style={{ backgroundColor: repo.languageColor || "#ccc" }}
-              />
-              {repo.language}
+        <img
+          src={item.buyer.avatarUrl}
+          alt={item.buyer.username}
+          className="h-10 w-10 rounded-full border border-[#30363d]"
+        />
+        <div className="flex-1 min-w-0">
+          {/* Top row: username + status */}
+          <div className="flex items-center justify-between gap-2">
+            <span className="text-sm font-medium text-[#e6edf3]">
+              {item.buyer.username}
             </span>
-          )}
-          {repo.stars > 0 && (
-            <a href="#" className="flex items-center gap-1 hover:text-[#2f81f7]">
-              <Star className="h-3.5 w-3.5" />
-              {formatStars(repo.stars)}
-            </a>
-          )}
+            <span
+              className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${statusInfo.color} ${statusInfo.bg}`}
+            >
+              {statusInfo.label}
+            </span>
+          </div>
+
+          {/* Order title */}
+          <h3 className="mt-1 text-sm font-semibold text-[#e6edf3]">
+            {item.title}
+          </h3>
+
+          {/* Order description */}
+          <p className="mt-1 text-xs leading-relaxed text-[#7d8590] line-clamp-2">
+            {item.description}
+          </p>
+
+          {/* Tags */}
+          <div className="mt-2 flex flex-wrap gap-1.5">
+            {item.tags.map((tag) => (
+              <span
+                key={tag}
+                className="inline-flex items-center rounded-full border border-[#30363d] bg-[#21262d] px-2 py-0.5 text-xs text-[#7d8590]"
+              >
+                {tag}
+              </span>
+            ))}
+          </div>
+
+          {/* Footer: price + time */}
+          <div className="mt-3 flex items-center justify-between text-xs text-[#7d8590]">
+            <span className="font-medium text-[#f0883e]">
+              {formatPrice(item.price)}
+            </span>
+            <span>{item.timestamp}</span>
+          </div>
         </div>
-      </div>
-      <div className="flex items-center gap-1 shrink-0">
-        <Button
-          variant="outline"
-          size="sm"
-          className="h-7 gap-1 rounded-md border-[#30363d] bg-[#21262d] px-3 text-xs text-[#e6edf3] hover:border-[#8b949e] hover:bg-[#30363d]"
-        >
-          <Star className="h-3.5 w-3.5" />
-          Star
-        </Button>
-        <Button
-          variant="ghost"
-          size="icon"
-          className="h-7 w-7 text-[#7d8590] hover:bg-[#21262d] hover:text-[#e6edf3]"
-        >
-          <BookMarked className="h-3.5 w-3.5" />
-        </Button>
       </div>
     </div>
   )

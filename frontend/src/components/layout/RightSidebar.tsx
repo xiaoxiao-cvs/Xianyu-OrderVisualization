@@ -22,14 +22,14 @@ export function RightSidebar() {
         <div className="mt-10 rounded-lg border border-[#30363d] p-4">
           <div className="mb-4 flex items-center justify-between">
             <h2 className="text-sm font-semibold text-[#e6edf3]">
-              Latest from our changelog
+              订单更新日志
             </h2>
             <Button
               variant="ghost"
               size="icon"
               onClick={refresh}
               className="h-6 w-6 text-[#7d8590] hover:bg-[#21262d] hover:text-[#e6edf3]"
-              title="Refresh changelog"
+              title="刷新日志"
             >
               <RefreshCw className="h-3 w-3" />
             </Button>
@@ -55,12 +55,9 @@ export function RightSidebar() {
                     <TimelineIndicator className="size-3 border-0 bg-[#30363d]" />
                   </TimelineHeader>
                   <TimelineContent>
-                    <a
-                      href={item.url}
-                      className="text-sm leading-snug text-[#2f81f7] hover:underline"
-                    >
+                    <span className="text-sm leading-snug text-[#2f81f7]">
                       {item.title}
-                    </a>
+                    </span>
                   </TimelineContent>
                 </TimelineItem>
               ))}
@@ -71,7 +68,7 @@ export function RightSidebar() {
             href="#"
             className="mt-4 inline-block text-xs text-[#7d8590] hover:text-[#2f81f7]"
           >
-            View changelog →
+            查看全部日志 →
           </a>
         </div>
       </div>

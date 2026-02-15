@@ -1,16 +1,11 @@
 import { useState, useEffect, useCallback } from "react"
 import {
   feedItems as mockFeedItems,
-  trendingRepos as mockTrendingRepos,
-  popularRepos as mockPopularRepos,
   type FeedItem,
-  type Repository,
 } from "@/lib/data"
 
 export interface FeedData {
   feedItems: FeedItem[]
-  trendingRepos: Repository[]
-  popularRepos: Repository[]
 }
 
 export interface UseFeedReturn {
@@ -29,8 +24,6 @@ export interface UseFeedReturn {
 export function useFeed(): UseFeedReturn {
   const [data, setData] = useState<FeedData>({
     feedItems: [],
-    trendingRepos: [],
-    popularRepos: [],
   })
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -50,8 +43,6 @@ export function useFeed(): UseFeedReturn {
 
       setData({
         feedItems: mockFeedItems,
-        trendingRepos: mockTrendingRepos,
-        popularRepos: mockPopularRepos,
       })
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load feed data")

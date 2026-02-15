@@ -1,38 +1,37 @@
 import { cn } from "@/lib/utils"
 
-// Mock data types
-export interface Repository {
-  id: string
-  owner: string
-  name: string
-  avatarUrl: string
-  description?: string
-  language?: string
-  languageColor?: string
-  stars: number
-}
+// Mock data types — 闲鱼订单可视化
 
+/** 订单状态 */
+export type OrderStatus =
+  | "pending"      // 待处理
+  | "in_progress"  // 进行中
+  | "shipped"      // 已发货
+  | "completed"    // 已完成
+  | "cancelled"    // 已取消
+
+/** 订单 Feed 卡片 */
 export interface FeedItem {
   id: string
-  type: "follow" | "star" | "trending" | "popular"
-  actor: {
+  buyer: {
     username: string
-    displayName?: string
     avatarUrl: string
-    bio?: string
-    repoCount?: number
-    followerCount?: number
   }
-  target?: string
-  timestamp: string
-  repository?: Repository
+  title: string          // 订单概括
+  description: string    // 订单简介
+  tags: string[]         // 标签
+  status: OrderStatus    // 当前状态
+  price: number          // 价格 (元)
+  timestamp: string      // 时间
 }
 
+/** 更新日志条目 */
 export interface ChangelogItem {
   id: string
   date: string
   title: string
-  url: string
+  /** 可选的关联订单号 */
+  orderId?: string
 }
 
 // Mock Data
@@ -41,185 +40,79 @@ export const userProfile = {
   avatarUrl: "https://avatars.githubusercontent.com/u/132777740?s=40&v=4",
 }
 
-export const topRepositories: Repository[] = [
-  {
-    id: "1",
-    owner: "xiaoxiao-cvs",
-    name: "mailauncher",
-    avatarUrl: "https://avatars.githubusercontent.com/u/132777740?s=16&v=4",
-    stars: 0,
-  },
-  {
-    id: "2",
-    owner: "xiaoxiao-cvs",
-    name: "WB-WebAPP",
-    avatarUrl: "https://avatars.githubusercontent.com/u/132777740?s=16&v=4",
-    stars: 0,
-  },
-  {
-    id: "3",
-    owner: "xiaoxiao-cvs",
-    name: "test_repo2",
-    avatarUrl: "https://avatars.githubusercontent.com/u/132777740?s=16&v=4",
-    stars: 0,
-  },
-  {
-    id: "4",
-    owner: "xiaoxiao-cvs",
-    name: "Document-Q-A",
-    avatarUrl: "https://avatars.githubusercontent.com/u/132777740?s=16&v=4",
-    stars: 1,
-  },
-  {
-    id: "5",
-    owner: "xiaoxiao-cvs",
-    name: "Convenient-access",
-    avatarUrl: "https://avatars.githubusercontent.com/u/132777740?s=16&v=4",
-    stars: 0,
-  },
-  {
-    id: "6",
-    owner: "xiaoxiao-cvs",
-    name: "Xianyu-OrderVisualization",
-    avatarUrl: "https://avatars.githubusercontent.com/u/132777740?s=16&v=4",
-    stars: 0,
-  },
-  {
-    id: "7",
-    owner: "World-of-Kivotos",
-    name: "World-of-Kivotos_Web",
-    avatarUrl: "https://avatars.githubusercontent.com/u/226046457?s=16&v=4",
-    stars: 0,
-  },
-]
-
 export const feedItems: FeedItem[] = [
   {
     id: "1",
-    type: "follow",
-    actor: {
-      username: "sicusa",
-      displayName: "Phlamcenth Sicusa",
-      avatarUrl: "https://avatars.githubusercontent.com/u/1961145?s=80&v=4",
-      bio: "𝐻𝑜𝓉𝒽 𝓂𝑒𝓁𝓊𝑒𝓂𝒸𝓊𝒶 𝓁𝒶𝓃'𝒶𝒾. / 愿你在此寻到光辉。",
-      repoCount: 11,
-      followerCount: 103,
+    buyer: {
+      username: "小明同学",
+      avatarUrl: "https://api.dicebear.com/9.x/adventurer/svg?seed=Nolan",
     },
-    timestamp: "last week",
+    title: "Python爬虫脚本定制开发",
+    description:
+      "需要一个能自动抓取电商平台商品信息的爬虫脚本，支持多平台、自动翻页、数据导出为Excel。要求代码规范、有注释。",
+    tags: ["Python", "爬虫", "定制开发"],
+    status: "in_progress",
+    price: 299,
+    timestamp: "2 小时前",
   },
   {
     id: "2",
-    type: "star",
-    actor: {
-      username: "lei6622",
-      avatarUrl: "https://avatars.githubusercontent.com/u/174229280?s=80&v=4",
+    buyer: {
+      username: "设计师小王",
+      avatarUrl: "https://api.dicebear.com/9.x/adventurer/svg?seed=Callie",
     },
-    timestamp: "3 weeks ago",
-    repository: {
-      id: "r1",
-      owner: "xiaoxiao-cvs",
-      name: "Document-Q-A",
-      avatarUrl: "https://avatars.githubusercontent.com/u/132777740?s=40&v=4",
-      description: "毕业设计：通过调用大模型API，返回基于文档内容的答案，并指出答案来自文档的哪一页或哪一段",
-      language: "TypeScript",
-      languageColor: "#3178c6",
-      stars: 1,
-    },
-  },
-  {
-    id: "3",
-    type: "follow",
-    actor: {
-      username: "lei6622",
-      displayName: "mary",
-      avatarUrl: "https://avatars.githubusercontent.com/u/174229280?s=80&v=4",
-      followerCount: 1,
-    },
-    timestamp: "3 weeks ago",
-  },
-  {
-    id: "4",
-    type: "follow",
-    actor: {
-      username: "weakdreamer",
-      displayName: "临观",
-      avatarUrl: "https://avatars.githubusercontent.com/u/78489726?s=80&v=4",
-      bio: "这个入不会写代码，只会用自然语言鞭策 AI ，试图写出能跑的程序——GPT 把这套路叫做 NPC（Natural→Protocol→Concrete）。 希望有一天能通过这种方式，使得个人实现更全面和自由的发展。",
-      repoCount: 2,
-    },
-    timestamp: "last month",
-  },
-]
-
-export const trendingRepos: Repository[] = [
-  {
-    id: "t1",
-    owner: "sipeed",
-    name: "picoclaw",
-    avatarUrl: "https://avatars.githubusercontent.com/u/44034752?s=40&v=4",
-    description: "picoclaw",
-    language: "Go",
-    languageColor: "#00ADD8",
-    stars: 5200,
-  },
-  {
-    id: "t2",
-    owner: "koala73",
-    name: "worldmonitor",
-    avatarUrl: "https://avatars.githubusercontent.com/u/996596?s=40&v=4",
-    description: "Real-time global intelligence dashboard — AI-powered news aggregation, geopolitical monitoring, and infrastructure tracking in a unified situational awareness interface",
-    language: "TypeScript",
-    languageColor: "#3178c6",
-    stars: 2600,
-  },
-]
-
-export const popularRepos: Repository[] = [
-  {
-    id: "p1",
-    owner: "OpenXiangShan",
-    name: "XiangShan",
-    avatarUrl: "https://avatars.githubusercontent.com/u/66780499?s=40&v=4",
-    description: "Open-source high-performance RISC-V processor",
-    language: "Scala",
-    languageColor: "#c22d40",
-    stars: 6900,
+    title: "个人作品集网站搭建",
+    description:
+      "帮忙搭建一个响应式个人作品集网站，要求简约风格，支持图片/视频展示，带联系表单，部署到Vercel。",
+    tags: ["前端", "React", "网站搭建"],
+    status: "shipped",
+    price: 450,
+    timestamp: "昨天",
   },
 ]
 
 export const changelogItems: ChangelogItem[] = [
   {
     id: "c1",
-    date: "2 days ago",
-    title: "GitHub Mobile: Model picker for Copilot coding agent",
-    url: "#",
+    date: "10 分钟前",
+    title: "订单「Python爬虫脚本定制开发」AI 已完成核心代码编写",
+    orderId: "1",
   },
   {
     id: "c2",
-    date: "3 days ago",
-    title: "Track additional Dependabot configuration changes in audit logs",
-    url: "#",
+    date: "2 小时前",
+    title: "订单「个人作品集网站搭建」已发货，等待买家确认",
+    orderId: "2",
   },
   {
     id: "c3",
-    date: "4 days ago",
-    title: "GPT-5.3-Codex is now generally available for GitHub Copilot",
-    url: "#",
+    date: "昨天",
+    title: "订单「个人作品集网站搭建」通过代码审查，准备打包交付",
+    orderId: "2",
   },
   {
     id: "c4",
-    date: "4 days ago",
-    title: "GitHub Apps can now utilize public preview Enterprise Teams APIs via fine-grained permissions",
-    url: "#",
+    date: "2 天前",
+    title: "订单「Python爬虫脚本定制开发」买家已下单，开始需求分析",
+    orderId: "1",
   },
 ]
 
-// Helper to format star count
-export function formatStars(count: number): string {
-  if (count >= 1000) {
-    return (count / 1000).toFixed(1).replace(/\.0$/, "") + "k"
-  }
-  return count.toString()
+/** 订单状态的中文标签与颜色 */
+export const ORDER_STATUS_MAP: Record<
+  OrderStatus,
+  { label: string; color: string; bg: string }
+> = {
+  pending:     { label: "待处理", color: "text-yellow-400", bg: "bg-yellow-400/10" },
+  in_progress: { label: "进行中", color: "text-blue-400",   bg: "bg-blue-400/10" },
+  shipped:     { label: "已发货", color: "text-purple-400", bg: "bg-purple-400/10" },
+  completed:   { label: "已完成", color: "text-green-400",  bg: "bg-green-400/10" },
+  cancelled:   { label: "已取消", color: "text-red-400",    bg: "bg-red-400/10" },
+}
+
+// Helper to format price
+export function formatPrice(price: number): string {
+  return `¥${price.toFixed(2)}`
 }
 
 export { cn }
